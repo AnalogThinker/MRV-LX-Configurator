@@ -11,7 +11,7 @@ a live SSH activity log, an xterm.js terminal, and multi-device support.
 ---
 ## ⭐ Fastest install — one-shot script
 
-**A) From the cloned/copied folder** (has `app/` + `requirements.txt`):
+# A) From the cloned/copied folder** (has `app/` + `requirements.txt`):
 ```bash
 git clone https://github.com/AnalogThinker/MRV-LX-Configurator.git
 cd MRV-LX-Configurator && sudo bash install.sh
