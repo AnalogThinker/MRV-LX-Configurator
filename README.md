@@ -9,14 +9,12 @@ read dashboards with parsed tables, guided + manual configuration writes,
 a live SSH activity log, an xterm.js terminal, and multi-device support.
 
 ---
-
 ## ⭐ Fastest install — one-shot script
 
-Copy the project into your LXC (or point it at a git repo), then:
-
+**A) From the cloned/copied folder** (has `app/` + `requirements.txt`):
 ```bash
-# A) from the copied folder (has app/ + requirements.txt):
-cd lxconsole && sudo bash install.sh
+git clone https://github.com/AnalogThinker/MRV-LX-Configurator.git
+cd MRV-LX-Configurator && sudo bash install.sh
 
 # B) straight from a git repo:
 sudo REPO=https://github.com/you/lxconsole.git bash install.sh
