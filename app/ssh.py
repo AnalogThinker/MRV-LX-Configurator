@@ -2,7 +2,7 @@
 ssh.py — SSH transport layer for the MRV LX console replacement.
 
 Replaces the old j2ssh.jar (SSHTools J2SSH). Provides:
-  * persistent, reusable connection to an LX device
+  * fresh SSH transport per operation (required by LX firmware)
   * legacy host-key algorithm support (the LX only offers ssh-rsa/ssh-dss)
   * optional superuser escalation ("enable" -> password)
   * one-shot CLI commands (read until prompt, auto-paging the '--More--' pager)
@@ -105,45 +105,69 @@ class LXConnection:
         return kw
 
     async def connect(self) -> None:
-        if self._conn is not None:
-            return
-        self._emit("status", state="connecting",
-                   detail=f"{self.cfg.username}@{self.cfg.host}:{self.cfg.port}")
+        """Validate SSH credentials using a temporary connection.
+
+        LX firmware only provides a functional CLI on the first process channel
+        of an SSH transport, so the validation transport is closed immediately.
+        """
+        self._emit(
+            "status",
+            state="connecting",
+            detail=f"{self.cfg.username}@{self.cfg.host}:{self.cfg.port}",
+        )
         try:
-            self._conn = await asyncssh.connect(**self._connect_kwargs())
+            conn = await asyncssh.connect(**self._connect_kwargs())
+            conn.close()
+            await asyncio.wait_for(conn.wait_closed(), timeout=5)
         except Exception as exc:
             self._emit("status", state="error", detail=str(exc))
             raise
-        self._emit("status", state="connected")
+        self._emit("status", state="connected", detail="credentials validated")
 
     async def close(self) -> None:
+        """Compatibility no-op; operation connections close themselves."""
         if self._conn is not None:
             self._conn.close()
-            await self._conn.wait_closed()
-            self._conn = None
+            try:
+                await asyncio.wait_for(self._conn.wait_closed(), timeout=5)
+            except asyncio.TimeoutError:
+                self._conn.abort()
+            finally:
+                self._conn = None
 
-    async def _ensure(self) -> asyncssh.SSHClientConnection:
-        if self._conn is None:
-            await self.connect()
-        assert self._conn is not None
-        return self._conn
+    async def _open_operation(self):
+        """Open a fresh SSH transport for one complete API operation."""
+        self._emit("info", detail="opening fresh SSH connection")
+        return await asyncssh.connect(**self._connect_kwargs())
 
     # -- one-shot command ---------------------------------------------------
 
     async def run(self, command: str) -> dict:
-        conn = await self._ensure()
         async with self._lock:
+            conn = None
             try:
-                async with conn.create_process(term_type="vt100") as proc:
+                conn = await self._open_operation()
+                async with conn.create_process(
+                    term_type="vt100",
+                    term_size=(120, 40),
+                ) as proc:
                     await self._prepare(proc)
                     return await self._one(proc, command)
-            except asyncssh.Error as exc:
-                log.warning("run() failed, reconnecting once: %s", exc)
-                await self.close()
-                conn = await self._ensure()
-                async with conn.create_process(term_type="vt100") as proc:
-                    await self._prepare(proc)
-                    return await self._one(proc, command)
+            except Exception as exc:
+                self._emit("status", state="error", detail=str(exc))
+                raise
+            finally:
+                await self._close_operation(conn)
+
+    async def _close_operation(self, conn) -> None:
+        if conn is None:
+            return
+        conn.close()
+        try:
+            await asyncio.wait_for(conn.wait_closed(), timeout=5)
+        except asyncio.TimeoutError:
+            conn.abort()
+        self._emit("info", detail="SSH connection closed")
 
     async def _prepare(self, proc, force_enable: bool = False) -> None:
         await self._read_until_idle(proc, quiet=0.6)
@@ -160,10 +184,8 @@ class LXConnection:
         self._emit("tx", data=command)
         self._emit("status", state="busy", detail=command)
         proc.stdin.write(command + "\r")
-        try:
-            out = await self._read_until_prompt(proc, timeout=self.cfg.command_timeout)
-        finally:
-            self._emit("status", state="idle", detail="idle")
+        out = await self._read_until_prompt(proc, timeout=self.cfg.command_timeout)
+        self._emit("status", state="idle")
         cleaned = _clean(out, command, self._prompt, self._pager)
         result = {"command": command, "output": cleaned}
         err = _find_error(cleaned)
@@ -176,23 +198,30 @@ class LXConnection:
 
     async def run_config(self, commands: list[str], save: bool = False,
                          context: Optional[str] = None) -> dict:
-        conn = await self._ensure()
         results: list[dict] = []
+        saved = None
         async with self._lock:
-            async with conn.create_process(term_type="vt100") as proc:
-                await self._prepare(proc, force_enable=True)
-                if commands or context:
-                    results.append(await self._one(proc, "configuration"))
-                    if context:
-                        results.append(await self._one(proc, context))
-                    for cmd in commands:
-                        results.append(await self._one(proc, cmd))
-                    results.append(await self._one(proc, "end"))
-                saved = None
-                if save:
-                    res = await self._one(proc, self.cfg.save_command)
-                    results.append(res)
-                    saved = "error_detected" not in res
+            conn = None
+            try:
+                conn = await self._open_operation()
+                async with conn.create_process(
+                    term_type="vt100",
+                    term_size=(120, 40),
+                ) as proc:
+                    await self._prepare(proc, force_enable=True)
+                    if commands or context:
+                        results.append(await self._one(proc, "configuration"))
+                        if context:
+                            results.append(await self._one(proc, context))
+                        for cmd in commands:
+                            results.append(await self._one(proc, cmd))
+                        results.append(await self._one(proc, "end"))
+                    if save:
+                        res = await self._one(proc, self.cfg.save_command)
+                        results.append(res)
+                        saved = "error_detected" not in res
+            finally:
+                await self._close_operation(conn)
         errors = [r["error_detected"] for r in results if r.get("error_detected")]
         self._emit("info", detail=f"config applied ({len(commands)} cmd"
                                   f"{'s' if len(commands) != 1 else ''}"
@@ -204,23 +233,33 @@ class LXConnection:
     # -- introspection ------------------------------------------------------
 
     async def cli_help(self, tokens: str = "", context: Optional[str] = None) -> dict:
-        conn = await self._ensure()
+        help_text = ""
         async with self._lock:
-            async with conn.create_process(term_type="vt100") as proc:
-                await self._prepare(proc, force_enable=True)
-                if context:
-                    await self._one(proc, "configuration")
-                    await self._one(proc, context)
-                probe = (tokens.strip() + " ?").strip() if tokens.strip() else "?"
-                self._emit("tx", data=probe)
-                self._emit("status", state="busy", detail=f"discovering: {probe}")
-                proc.stdin.write(probe)                 # no newline
-                help_text = await self._read_help(proc, timeout=self.cfg.command_timeout)
-                proc.stdin.write("\x15")                # Ctrl-U: clear line
-                await self._read_until_idle(proc, quiet=0.3)
-                if context:
-                    await self._one(proc, "end")
-                self._emit("status", state="idle")
+            conn = None
+            try:
+                conn = await self._open_operation()
+                async with conn.create_process(
+                    term_type="vt100",
+                    term_size=(120, 40),
+                ) as proc:
+                    await self._prepare(proc, force_enable=True)
+                    if context:
+                        await self._one(proc, "configuration")
+                        await self._one(proc, context)
+                    probe = (tokens.strip() + " ?").strip() if tokens.strip() else "?"
+                    self._emit("tx", data=probe)
+                    self._emit("status", state="busy", detail=f"discovering: {probe}")
+                    proc.stdin.write(probe)             # deliberately no newline
+                    help_text = await self._read_help(
+                        proc, timeout=self.cfg.command_timeout
+                    )
+                    proc.stdin.write("\x15")            # Ctrl-U: clear line
+                    await self._read_until_idle(proc, quiet=0.3)
+                    if context:
+                        await self._one(proc, "end")
+                    self._emit("status", state="idle", detail="idle")
+            finally:
+                await self._close_operation(conn)
         return {"tokens": tokens, "context": context,
                 "output": _clean(help_text, "", self._prompt, self._pager)}
 
@@ -269,7 +308,6 @@ class LXConnection:
                         self._last_prompt = m.group(0).strip()
                         break
         except asyncio.TimeoutError:
-            self._emit("error", detail=f"command timed out after {timeout}s waiting for LX prompt")
             self._emit("status", state="error", detail="command timed out")
         return "".join(buf)
 
