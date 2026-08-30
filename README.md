@@ -22,7 +22,14 @@ MRV LX Configurator provides a modern replacement using:
 The proprietary GUI-server protocol on TCP port 5040 is not used.
 
 ## Interface preview
-<img width="1191" height="863" alt="Screenshot" src="https://github.com/user-attachments/assets/f0b45a9e-19bf-483c-8ebc-a4a28aa1a9b1" />
+
+<p align="center">
+  <a href="docs/screenshots/classic-port-config.png">
+    <img src="docs/screenshots/classic-port-config.png" alt="MRV LX Configurator interface" width="1200">
+  </a>
+</p>
+
+The Classic Port Configuration interface loads the selected port's current settings, tracks modified fields, applies only pending changes, and can persist the running configuration to flash.
 
 ## Current features
 
@@ -30,20 +37,50 @@ The proprietary GUI-server protocol on TCP port 5040 is not used.
 
 - Connect to any reachable MRV LX device by IP address or hostname.
 - Editable SSH port, username, password, and enable password.
-- Defaults for the commonly used MRV credentials can be supplied through environment variables.
+- Optional environment variables provide connection-form defaults.
 - Displays device information such as firmware, uptime, temperature, connection target, and hostname when available.
 - Supports multiple browser/device sessions through per-connection session tokens.
+- Shows live connection activity while the initial device profile is loading.
 
-### Guided port configuration
+### Classic Port Configuration
+
+The primary configuration interface follows the functional organization of the original Java application while using the modern SSH and CLI backend.
 
 - Select an asynchronous port from the live port summary.
+- Load the port's current configuration into a form.
+- Prepopulate form controls with values reported by the MRV.
+- Supply baseline values for stable settings such as speed, data bits, stop bits, parity, flow control, and common enabled/disabled states.
+- Preserve an MRV-reported current value even when the value is not part of the local baseline.
+- Organize settings into feature tabs:
+  - Console
+  - TCP / Telnet / SSH
+  - Authentication
+  - Data Buffer
+  - Modem / APD
+  - RS-485
+  - Signal / Alarms
+  - Attached Devices
+  - Advanced
+- Mark edited fields and display the number of pending changes.
+- Apply only fields whose values changed.
+- Disable the form while an operation is running.
+- Reload the selected port after applying changes.
+- Compare reloaded values with the requested values for verification.
+- Tolerate unsupported read views without blocking the complete port profile.
+
+The current Classic form focuses first on commonly used console-port fields. Additional feature tabs are being populated and validated against real MRV command output.
+
+### Advanced command explorer
+
+The recursive, introspection-driven command builder remains available as an advanced interface for uncommon, firmware-specific, or not-yet-mapped settings.
+
 - Browse settings organized into functional categories:
   - Serial port
   - Access and connection
   - Attached device
   - Miscellaneous and advanced
-- Recursively discovers command paths from the device using context-sensitive `?` help.
-- Supports commands with variable depth, for example:
+- Recursively discover command paths using the device's context-sensitive `?` help.
+- Support commands with variable depth, for example:
 
 ```text
 tcp
@@ -51,26 +88,24 @@ tcp
     <address>
 ```
 
-- Detects `<cr>` to determine when a command path is complete.
-- Supports:
-  - keyword dropdowns
-  - finite enumerated values
-  - free-text placeholders
-  - wrapped help descriptions
-- Shows the generated in-context CLI command before applying it.
-- Detects and reports MRV CLI errors such as `Syntax Error`, `Invalid input`, and incomplete commands.
+- Detect `<cr>` to determine when the current command path is complete.
+- Support keyword dropdowns, finite enumerated values, free-text placeholders, and wrapped help descriptions.
+- Show the generated in-context CLI command before applying it.
+- Detect and report MRV CLI errors such as `Syntax Error`, `Invalid input`, and incomplete commands.
 
 ### Configuration persistence
 
 The interface distinguishes between the MRV running configuration and flash configuration:
 
-- **Apply to running config** applies the selected change to the active configuration. The change is lost after a reboot unless the running configuration is later saved to flash.
-- **Apply and persist to flash** applies the selected change and then saves the complete running configuration to flash.
-- **Persist all running changes to flash** runs `save configuration flash` and saves every currently active unsaved change on the device.
+- **Apply to running config** applies the selected changes to the active configuration. The changes are lost after a reboot unless the running configuration is later saved to flash.
+- **Apply and persist to flash** applies the selected changes and then saves the complete running configuration to flash.
+- **Persist all running changes to flash** runs `save configuration flash` and saves every currently active unsaved change on the device, not only changes made in the current form operation.
+
+The standalone flash-persistence action requires confirmation.
 
 ### Read-only device information
 
-Read actions are grouped into collapsible categories:
+Read actions are grouped into collapsed categories:
 
 - System
 - Network
@@ -88,23 +123,27 @@ show port async 1 tcp
 show port async 1 users
 ```
 
+The output area is grouped with the read-only controls and kept separate from configuration results.
+
 ### Live SSH activity
 
 - Displays commands sent to the MRV and output received from the MRV.
 - Shows connection, busy, idle, and error states.
 - Handles MRV paged output automatically.
-- Normalizes terminal line endings for readable multiline output.
+- Advances each distinct pager prompt once and stops when the final CLI prompt appears.
+- Includes a pager safety limit to prevent runaway input.
+- Normalizes CR, LF, and CRLF terminal line endings into readable multiline output.
 - Buffers character-by-character SSH output into readable blocks.
-- Removes ANSI screen-control sequences and terminal bell characters from the activity display.
-- Retains an extended event history for troubleshooting.
+- Removes ANSI screen-control sequences and terminal bell characters from the browser activity display.
+- Retains extended backend and browser event history for troubleshooting.
 
 ### Raw terminal
 
-An xterm.js terminal is available as an advanced/manual escape hatch. The terminal uses a separate SSH connection from the application control channel.
+An xterm.js terminal remains available as an advanced/manual escape hatch. The terminal uses a separate SSH connection from the application control channel.
 
 ## SSH architecture
 
-The MRV LX firmware has an unusual SSH limitation: only the first interactive process channel on an SSH transport receives a complete, functional CLI session.
+The tested MRV LX firmware only initializes the first interactive process channel on an SSH transport as a complete, functional CLI session.
 
 The application therefore uses the following architecture:
 
@@ -112,7 +151,9 @@ The application therefore uses the following architecture:
 Browser session
 ├── Persistent control SSH transport
 │   └── One persistent CLI process channel
+│       ├── Startup information
 │       ├── Read commands
+│       ├── Port-profile loading
 │       ├── Configuration writes
 │       └── Save-to-flash operations
 │
@@ -123,9 +164,11 @@ Browser session
     └── xterm.js interactive terminal
 ```
 
-Normal reads and writes are serialized through the persistent CLI channel. This avoids the delay of reconnecting for every command while remaining compatible with the MRV firmware.
+Normal reads and writes are serialized through the persistent CLI channel. This avoids reconnecting for every command while remaining compatible with the MRV firmware.
 
-Introspection uses disposable SSH sessions because the MRV leaves the partially typed help command in its line-editing buffer after `?`, and the tested firmware does not reliably clear that buffer with `Ctrl+U`.
+Introspection uses disposable SSH sessions because the MRV leaves a partially typed help command in its line-editing buffer after `?`, and the tested firmware does not reliably clear that buffer with `Ctrl+U`.
+
+Privilege state is isolated per CLI process. A disposable discovery session cannot cause the persistent control session to incorrectly assume that it is already in superuser mode.
 
 ## Confirmed MRV behavior
 
@@ -145,6 +188,7 @@ The following behavior has been confirmed against the real LX-4048T-101AC:
 | Pager text | `Type a key to continue, q to quit` |
 | System IP command | `show system ip status` |
 | Port summary | `show port async summary` |
+| Port detail | Requires a final view, such as `characteristics`, `status`, `tcp`, or `users` |
 
 Example configuration transaction:
 
@@ -167,14 +211,20 @@ MRV-LX-Configurator/
 │   ├── events.py
 │   ├── main.py
 │   ├── parsers.py
+│   ├── port_schema.py
 │   ├── sessions.py
 │   ├── ssh.py
 │   └── static/
 │       └── index.html
+├── docs/
+│   └── screenshots/
+│       └── classic-port-config.png
 ├── install.sh
 ├── requirements.txt
 └── README.md
 ```
+
+`port_schema.py` defines the Classic form tabs, field metadata, baseline values, CLI command templates, output aliases, and conservative port-profile parsing used by the form interface.
 
 ## Installation on Debian or Ubuntu
 
@@ -190,7 +240,7 @@ sudo bash install.sh
 
 The installer:
 
-1. installs Python, pip, venv, and required packages;
+1. installs Python, pip, venv, and required system packages;
 2. installs the application under `/opt/lxconsole` by default;
 3. creates a Python virtual environment;
 4. installs `requirements.txt`;
@@ -290,6 +340,7 @@ cd /opt/lxconsole
   app/ssh.py \
   app/main.py \
   app/parsers.py \
+  app/port_schema.py \
   app/sessions.py \
   app/events.py
 ```
@@ -303,9 +354,22 @@ cd /opt/lxconsole
 .venv/bin/python -c "import yaml; yaml.safe_load(open('app/commands.yaml')); print('YAML OK')"
 ```
 
+### Classic form values do not populate
+
+Review the Live SSH Activity panel and the port-profile response. The Classic form maps labels reported by commands such as:
+
+```text
+show port async 1 characteristics
+show port async 1 tcp
+show port async 1 login
+show port async 1 apd
+```
+
+Unsupported views are recorded but do not prevent other values from loading. Additional firmware-specific labels may need to be added as aliases in `app/port_schema.py`.
+
 ### Commands return syntax errors
 
-Review the Live SSH Activity panel. MRV commands can require additional command levels. For example:
+MRV commands can require additional command levels. For example:
 
 ```text
 show port async 1
@@ -316,6 +380,8 @@ is incomplete on the tested firmware, while the following is valid:
 ```text
 show port async 1 characteristics
 ```
+
+Use the Advanced command explorer or Raw Terminal to inspect the live command tree when validating a new field mapping.
 
 ### Browser still shows the old interface
 
@@ -332,23 +398,21 @@ or clear the browser cache for the configurator address.
 - The application is intended for trusted management networks.
 - The current web interface does not provide built-in user authentication.
 - Do not expose the application directly to the public internet.
-- Use a VPN, authenticated reverse proxy, or other approved access control if remote access is required.
+- Use a VPN, authenticated reverse proxy, or another approved access control if remote access is required.
 - SSH host-key verification is currently disabled with `known_hosts=None` for compatibility and ease of deployment.
 - The application intentionally enables legacy SSH algorithms required by the MRV hardware.
 - Passwords and enable passwords should never be written to application logs.
 
 ## Planned improvements
 
-- Classic form-based port configuration inspired by the original Java interface.
-- Preloaded current port values with dirty-field tracking.
-- Apply only changed fields, then reload and verify returned values.
-- Feature tabs for Console, TCP/Telnet/SSH, Authentication, Data Buffer, Modem/APD, RS-485, Signal/Alarms, Attached Devices, and Advanced.
-- Firmware-aware caching of introspection results.
-- Improved structured parsers for additional read-only views.
-- Optional saved-device profiles.
-- SSH host-key pinning.
-- Authentication or reverse-proxy deployment guidance.
-- Portable Windows packaging for technician use.
+- Complete and validate the remaining Classic form tabs against live MRV output.
+- Expand exact read-label aliases and CLI write mappings in `port_schema.py`.
+- Prefetch and cache firmware-specific option sets where local baseline values are insufficient.
+- Improve structured parsers for additional read-only views.
+- Add optional saved-device profiles.
+- Add SSH host-key pinning.
+- Add authentication or reverse-proxy deployment guidance.
+- Explore portable Windows packaging for technician use.
 
 ## Disclaimer
 
