@@ -8,7 +8,7 @@ from typing import Any
 
 
 class EventBus:
-    def __init__(self, history: int = 200) -> None:
+    def __init__(self, history: int = 400) -> None:
         self._subs: set[asyncio.Queue] = set()
         self._log: list[dict] = []
         self._history = history
@@ -26,7 +26,7 @@ class EventBus:
 
     async def subscribe(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=1000)
-        for evt in self._log[-40:]:
+        for evt in self._log[-120:]:
             q.put_nowait(evt)
         self._subs.add(q)
         return q
