@@ -1,25 +1,10 @@
+"""SSH transport for the MRV LX web configurator.
+
+The LX firmware only initializes the first interactive process channel on an
+SSH transport. Normal reads/writes therefore share one persistent transport
+and one persistent process channel. Help probes use disposable connections
+because the LX leaves partial commands in its line editor after '?'.
 """
-ssh.py — SSH transport layer for the MRV LX console replacement.
-
-Replaces the old j2ssh.jar (SSHTools J2SSH). Provides:
-  * fresh SSH transport per operation (required by LX firmware)
-  * legacy host-key algorithm support (the LX only offers ssh-rsa/ssh-dss)
-  * optional superuser escalation ("enable" -> password)
-  * one-shot CLI commands (read until prompt, auto-paging the '--More--' pager)
-  * hierarchical configuration writes (configuration -> context -> cmds -> end)
-  * context-sensitive introspection ("<partial> ?") for the guided config UI
-  * device-error detection (flags "Syntax Error" etc.)
-  * a raw interactive PTY stream for the web terminal (xterm.js)
-
-CONFIRMED on-device (MRV LX-4048T-101AC):
-  * `ssh -vv` -> LX offers host-key algos ssh-rsa, ssh-dss ONLY.
-  * Login  : InReach / access -> CLI prompt "InReach:0 >".
-  * Enable : `enable` + password `system` -> superuser "InReach:0 >>".
-  * Config : `set` alone launches the setup wizard (refused remotely); real
-    config uses hierarchical modes: configuration -> "Config:0 >>" ->
-    "port async 1" -> "Async1:0 >>" -> speed/name/... -> end.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -40,25 +25,16 @@ LEGACY_KEX = [
 ]
 LEGACY_ENC = [
     "aes128-ctr", "aes192-ctr", "aes256-ctr",
-    "aes128-cbc", "aes192-cbc", "aes256-cbc",
-    "3des-cbc",
+    "aes128-cbc", "aes192-cbc", "aes256-cbc", "3des-cbc",
 ]
 LEGACY_MAC = ["hmac-sha2-256", "hmac-sha1", "hmac-sha1-96", "hmac-md5"]
 LEGACY_HOSTKEY = ["ssh-rsa", "ssh-dss"]
-
-# Device error signatures. The LX prints these but still returns a normal
-# prompt, so a command can "fail silently" unless we scan for them.
 ERROR_SIGNATURES = [
-    "Syntax Error",
-    "Invalid input",
-    "Ambiguous command",
-    "Unknown command",
-    "Incomplete command",
-    "Cannot Run setup from a remote location",
-    "Permission denied",
+    "Syntax Error", "Invalid input", "Ambiguous command", "Unknown command",
+    "Incomplete command", "Cannot Run setup from a remote location",
+    "Permission denied", "Enter a digit",
 ]
-_ERROR_RE = re.compile("|".join(re.escape(s) for s in ERROR_SIGNATURES),
-                       re.IGNORECASE)
+_ERROR_RE = re.compile("|".join(re.escape(x) for x in ERROR_SIGNATURES), re.I)
 
 
 @dataclass
@@ -83,306 +59,280 @@ class LXConnection:
     def __init__(self, cfg: DeviceConfig, emitter=None):
         self.cfg = cfg
         self._conn: Optional[asyncssh.SSHClientConnection] = None
+        self._proc = None
         self._lock = asyncio.Lock()
         self._prompt = re.compile(cfg.prompt_re, re.MULTILINE)
         self._pager = re.compile(cfg.pager_re)
         self._emit = emitter or (lambda *a, **k: None)
         self._last_prompt = ""
-
-    # -- connection lifecycle -----------------------------------------------
+        self._help_cache: dict[tuple[str, str], dict] = {}
+        self._enabled = False
 
     def _connect_kwargs(self) -> dict:
-        kw: dict = dict(host=self.cfg.host, port=self.cfg.port,
-                        username=self.cfg.username, known_hosts=None,
-                        connect_timeout=self.cfg.connect_timeout)
+        kw = {
+            "host": self.cfg.host,
+            "port": self.cfg.port,
+            "username": self.cfg.username,
+            "known_hosts": None,
+            "connect_timeout": self.cfg.connect_timeout,
+        }
         if self.cfg.password:
             kw["password"] = self.cfg.password
         if self.cfg.client_keys:
             kw["client_keys"] = self.cfg.client_keys
         if self.cfg.legacy_algorithms:
-            kw.update(kex_algs=LEGACY_KEX, encryption_algs=LEGACY_ENC,
-                      mac_algs=LEGACY_MAC, server_host_key_algs=LEGACY_HOSTKEY)
+            kw.update(
+                kex_algs=LEGACY_KEX,
+                encryption_algs=LEGACY_ENC,
+                mac_algs=LEGACY_MAC,
+                server_host_key_algs=LEGACY_HOSTKEY,
+            )
         return kw
 
     async def connect(self) -> None:
-        """Validate SSH credentials using a temporary connection.
+        async with self._lock:
+            await self._connect_control()
 
-        LX firmware only provides a functional CLI on the first process channel
-        of an SSH transport, so the validation transport is closed immediately.
-        """
-        self._emit(
-            "status",
-            state="connecting",
-            detail=f"{self.cfg.username}@{self.cfg.host}:{self.cfg.port}",
+    async def _connect_control(self) -> None:
+        if self._conn is not None and self._proc is not None:
+            return
+        self._emit("status", state="connecting",
+                   detail=f"{self.cfg.username}@{self.cfg.host}:{self.cfg.port}")
+        self._conn = await asyncssh.connect(**self._connect_kwargs())
+        self._proc = await self._conn.create_process(
+            term_type="vt100", term_size=(160, 48)
         )
-        try:
-            conn = await asyncssh.connect(**self._connect_kwargs())
+        greeting = await self._read_until_prompt(self._proc, self.cfg.connect_timeout)
+        if not self._last_prompt:
+            await self._close_control()
+            raise RuntimeError("MRV CLI prompt was not received")
+        self._emit("info", detail=f"persistent CLI ready: {self._last_prompt}")
+        self._emit("status", state="idle", detail="connected")
+        if self.cfg.enable:
+            await self._enable(self._proc)
+
+    async def _close_control(self) -> None:
+        proc, conn = self._proc, self._conn
+        self._proc = None
+        self._conn = None
+        self._enabled = False
+        if proc is not None:
+            try:
+                proc.stdin.write_eof()
+            except Exception:
+                pass
+        if conn is not None:
             conn.close()
-            await asyncio.wait_for(conn.wait_closed(), timeout=5)
-        except Exception as exc:
-            self._emit("status", state="error", detail=str(exc))
-            raise
-        self._emit("status", state="connected", detail="credentials validated")
+            try:
+                await asyncio.wait_for(conn.wait_closed(), timeout=3)
+            except asyncio.TimeoutError:
+                conn.abort()
 
     async def close(self) -> None:
-        """Compatibility no-op; operation connections close themselves."""
-        if self._conn is not None:
-            self._conn.close()
-            try:
-                await asyncio.wait_for(self._conn.wait_closed(), timeout=5)
-            except asyncio.TimeoutError:
-                self._conn.abort()
-            finally:
-                self._conn = None
+        async with self._lock:
+            await self._close_control()
 
-    async def _open_operation(self):
-        """Open a fresh SSH transport for one complete API operation."""
-        self._emit("info", detail="opening fresh SSH connection")
-        return await asyncssh.connect(**self._connect_kwargs())
+    async def _ensure_control(self):
+        if self._conn is None or self._proc is None:
+            await self._connect_control()
+        return self._proc
 
-    # -- one-shot command ---------------------------------------------------
+    async def _enable(self, proc) -> None:
+        if self._enabled or self._last_prompt.endswith(">>"):
+            self._enabled = True
+            return
+        self._emit("tx", data=self.cfg.enable_command)
+        proc.stdin.write(self.cfg.enable_command + "\r")
+        await asyncio.sleep(0.25)
+        if self.cfg.enable_password:
+            proc.stdin.write(self.cfg.enable_password + "\r")
+        response = await self._read_until_prompt(proc, 8)
+        if not self._last_prompt.endswith(">>"):
+            raise RuntimeError("Superuser prompt was not received")
+        self._enabled = True
+        self._emit("info", detail="escalated to superuser")
 
     async def run(self, command: str) -> dict:
         async with self._lock:
-            conn = None
-            try:
-                conn = await self._open_operation()
-                async with conn.create_process(
-                    term_type="vt100",
-                    term_size=(120, 40),
-                ) as proc:
-                    await self._prepare(proc)
+            for attempt in range(2):
+                try:
+                    proc = await self._ensure_control()
                     return await self._one(proc, command)
-            except Exception as exc:
-                self._emit("status", state="error", detail=str(exc))
-                raise
-            finally:
-                await self._close_operation(conn)
-
-    async def _close_operation(self, conn) -> None:
-        if conn is None:
-            return
-        conn.close()
-        try:
-            await asyncio.wait_for(conn.wait_closed(), timeout=5)
-        except asyncio.TimeoutError:
-            conn.abort()
-        self._emit("info", detail="SSH connection closed")
-
-    async def _prepare(self, proc, force_enable: bool = False) -> None:
-        await self._read_until_idle(proc, quiet=0.6)
-        if self.cfg.enable or force_enable:
-            self._emit("tx", data=self.cfg.enable_command)
-            proc.stdin.write(self.cfg.enable_command + "\r")
-            await asyncio.sleep(0.4)
-            if self.cfg.enable_password:
-                proc.stdin.write(self.cfg.enable_password + "\r")
-            await self._read_until_prompt(proc, timeout=8)
-            self._emit("info", detail="escalated to superuser")
+                except (asyncssh.Error, OSError, EOFError, RuntimeError) as exc:
+                    if attempt:
+                        raise
+                    self._emit("info", detail=f"control channel reconnect: {exc}")
+                    await self._close_control()
+        raise RuntimeError("command failed")
 
     async def _one(self, proc, command: str) -> dict:
         self._emit("tx", data=command)
         self._emit("status", state="busy", detail=command)
         proc.stdin.write(command + "\r")
-        out = await self._read_until_prompt(proc, timeout=self.cfg.command_timeout)
-        self._emit("status", state="idle")
-        cleaned = _clean(out, command, self._prompt, self._pager)
+        raw = await self._read_until_prompt(proc, self.cfg.command_timeout)
+        cleaned = _clean(raw, command, self._prompt, self._pager)
         result = {"command": command, "output": cleaned}
         err = _find_error(cleaned)
         if err:
             result["error_detected"] = err
             self._emit("error", detail=f"device reported: {err}", command=command)
+        self._emit("status", state="idle", detail="idle")
         return result
-
-    # -- write / configuration ----------------------------------------------
 
     async def run_config(self, commands: list[str], save: bool = False,
                          context: Optional[str] = None) -> dict:
         results: list[dict] = []
         saved = None
         async with self._lock:
-            conn = None
-            try:
-                conn = await self._open_operation()
-                async with conn.create_process(
-                    term_type="vt100",
-                    term_size=(120, 40),
-                ) as proc:
-                    await self._prepare(proc, force_enable=True)
-                    if commands or context:
-                        results.append(await self._one(proc, "configuration"))
-                        if context:
-                            results.append(await self._one(proc, context))
-                        for cmd in commands:
-                            results.append(await self._one(proc, cmd))
-                        results.append(await self._one(proc, "end"))
-                    if save:
-                        res = await self._one(proc, self.cfg.save_command)
-                        results.append(res)
-                        saved = "error_detected" not in res
-            finally:
-                await self._close_operation(conn)
+            proc = await self._ensure_control()
+            await self._enable(proc)
+            if commands or context:
+                results.append(await self._one(proc, "configuration"))
+                if context:
+                    results.append(await self._one(proc, context))
+                for command in commands:
+                    results.append(await self._one(proc, command))
+                results.append(await self._one(proc, "end"))
+            if save:
+                result = await self._one(proc, self.cfg.save_command)
+                results.append(result)
+                saved = "error_detected" not in result
         errors = [r["error_detected"] for r in results if r.get("error_detected")]
-        self._emit("info", detail=f"config applied ({len(commands)} cmd"
-                                  f"{'s' if len(commands) != 1 else ''}"
-                                  + (f" in '{context}'" if context else "")
-                                  + (", saved to flash" if save else "") + ")")
-        return {"results": results, "saved": saved,
-                "errors": errors, "ok": not errors}
-
-    # -- introspection ------------------------------------------------------
+        return {"results": results, "saved": saved, "errors": errors,
+                "ok": not errors}
 
     async def cli_help(self, tokens: str = "", context: Optional[str] = None) -> dict:
-        help_text = ""
+        key = (_context_kind(context), tokens.strip())
+        cached = self._help_cache.get(key)
+        if cached is not None:
+            self._emit("info", detail=f"help cache hit: {tokens or '?'}")
+            return dict(cached)
+
         async with self._lock:
             conn = None
             try:
-                conn = await self._open_operation()
-                async with conn.create_process(
-                    term_type="vt100",
-                    term_size=(120, 40),
-                ) as proc:
-                    await self._prepare(proc, force_enable=True)
-                    if context:
-                        await self._one(proc, "configuration")
-                        await self._one(proc, context)
-                    probe = (tokens.strip() + " ?").strip() if tokens.strip() else "?"
-                    self._emit("tx", data=probe)
-                    self._emit("status", state="busy", detail=f"discovering: {probe}")
-                    proc.stdin.write(probe)             # deliberately no newline
-                    help_text = await self._read_help(
-                        proc, timeout=self.cfg.command_timeout
-                    )
-                    # The LX leaves the help probe in its editable command buffer.
-                    # Ctrl-U is not supported reliably, and sending "end" here can
-                    # be interpreted as part of the buffered probe. This connection
-                    # is disposable, so close it without attempting to clear/exit.
-                    self._emit(
-                        "status",
-                        state="idle",
-                        detail="discovery complete",
-                    )
+                self._emit("status", state="busy", detail=f"discovering: {tokens or '?'}")
+                conn = await asyncssh.connect(**self._connect_kwargs())
+                proc = await conn.create_process(term_type="vt100", term_size=(160, 48))
+                await self._read_until_prompt(proc, self.cfg.connect_timeout)
+                await self._enable(proc)
+                if context:
+                    await self._one(proc, "configuration")
+                    await self._one(proc, context)
+                probe = f"{tokens.strip()} ?" if tokens.strip() else "?"
+                self._emit("tx", data=probe)
+                proc.stdin.write(probe)
+                help_text = await self._read_help(proc, self.cfg.command_timeout)
+                result = {"tokens": tokens, "context": context,
+                          "output": _clean(help_text, "", self._prompt, self._pager)}
+                self._help_cache[key] = dict(result)
+                self._emit("status", state="idle", detail="discovery complete")
+                return result
             finally:
-                await self._close_operation(conn)
-        return {"tokens": tokens, "context": context,
-                "output": _clean(help_text, "", self._prompt, self._pager)}
+                if conn is not None:
+                    conn.close()
+                    try:
+                        await asyncio.wait_for(conn.wait_closed(), timeout=3)
+                    except asyncio.TimeoutError:
+                        conn.abort()
 
     async def _read_help(self, proc, timeout: int) -> str:
-        buf: list[str] = []
+        parts: list[str] = []
         try:
             async with asyncio.timeout(timeout):
                 while True:
                     try:
-                        chunk = await asyncio.wait_for(proc.stdout.read(4096),
-                                                       timeout=0.6)
+                        chunk = await asyncio.wait_for(proc.stdout.read(4096), 0.65)
                     except asyncio.TimeoutError:
                         break
                     if not chunk:
                         break
-                    buf.append(chunk)
+                    parts.append(chunk)
                     self._emit("rx", data=chunk)
-                    if self._pager.search(chunk):
+                    if self._pager.search("".join(parts)[-512:]):
                         proc.stdin.write(" ")
                         self._emit("info", detail="pager: sent space")
         except asyncio.TimeoutError:
             pass
-        return "".join(buf)
-
-    # -- low-level reads ----------------------------------------------------
+        return "".join(parts)
 
     async def _read_until_prompt(self, proc, timeout: int) -> str:
-        buf: list[str] = []
+        parts: list[str] = []
         tail = ""
         try:
             async with asyncio.timeout(timeout):
                 while True:
                     chunk = await proc.stdout.read(4096)
                     if not chunk:
-                        break
-                    buf.append(chunk)
+                        raise EOFError("SSH process channel closed")
+                    parts.append(chunk)
                     self._emit("rx", data=chunk)
-                    tail = (tail + chunk)[-512:]
+                    tail = (tail + chunk)[-1024:]
                     if self._pager.search(tail):
                         proc.stdin.write(" ")
                         self._emit("info", detail="pager: sent space")
                         tail = ""
                         continue
-                    m = self._prompt.search(tail)
-                    if m:
-                        self._last_prompt = m.group(0).strip()
+                    match = self._prompt.search(tail)
+                    if match:
+                        self._last_prompt = match.group(0).strip()
                         break
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as exc:
             self._emit("status", state="error", detail="command timed out")
-        return "".join(buf)
-
-    async def _read_until_idle(self, proc, quiet: float = 0.4) -> str:
-        buf: list[str] = []
-        while True:
-            try:
-                chunk = await asyncio.wait_for(proc.stdout.read(4096), timeout=quiet)
-            except asyncio.TimeoutError:
-                break
-            if not chunk:
-                break
-            buf.append(chunk)
-        return "".join(buf)
-
-    # -- device info (for the banner) ---------------------------------------
+            raise RuntimeError("command timed out waiting for MRV prompt") from exc
+        return "".join(parts)
 
     async def device_info(self) -> dict:
         from .parsers import generic_keyvalue
-        info: dict = {"host": self.cfg.host, "port": str(self.cfg.port),
-                      "username": self.cfg.username}
+        info = {"host": self.cfg.host, "ip": self.cfg.host,
+                "port": str(self.cfg.port), "username": self.cfg.username}
+
+        async def fields(command: str) -> dict:
+            result = await self.run(command)
+            return generic_keyvalue(result["output"]).get("fields", {})
+
+        version = await fields("show version")
+        for key, value in version.items():
+            low = key.lower()
+            if "software version (runtime)" in low:
+                info["firmware"] = value
+            elif "model" in low or "product" in low:
+                info.setdefault("model", value)
+        characteristics = await fields("show system characteristics")
+        for key, value in characteristics.items():
+            low = key.lower()
+            if low in ("name", "system name", "server name"):
+                info["name"] = value
+            elif "model" in low or "type" in low:
+                info.setdefault("model", value)
+        # Valid on this LX firmware, retained for discovery/logging even though
+        # the connection target remains the authoritative banner address.
+        await fields("show system ip status")
+        status = await fields("show system status")
+        info["uptime"] = status.get("System Uptime", "")
+        info["temp"] = status.get("Current OnBoard Temp", "")
         if self._last_prompt:
-            info["hostname"] = self._last_prompt.split(":")[0].strip()
-
-        async def fields(cmd: str) -> dict:
-            try:
-                r = await self.run(cmd)
-                return generic_keyvalue(r["output"]).get("fields", {})
-            except Exception as exc:
-                log.debug("device_info %r failed: %s", cmd, exc)
-                return {}
-
-        for k, v in (await fields("show version")).items():
-            lk = k.lower()
-            if "version" in lk and "firmware" not in info:
-                info["firmware"] = v
-            if ("model" in lk or "product" in lk) and "model" not in info:
-                info["model"] = v
-        for k, v in (await fields("show system characteristics")).items():
-            lk = k.lower()
-            if lk in ("name", "system name", "server name") and "name" not in info:
-                info["name"] = v
-            if "location" in lk and "location" not in info:
-                info["location"] = v
-            if ("model" in lk or "type" in lk) and "model" not in info:
-                info["model"] = v
-        ip_re = re.compile(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b")
-        for v in (await fields("show system ip")).values():
-            m = ip_re.search(v)
-            if m:
-                info["ip"] = m.group(1)
-                break
-        st = await fields("show system status")
-        if "System Uptime" in st:
-            info["uptime"] = st["System Uptime"]
-        if "Current OnBoard Temp" in st:
-            info["temp"] = st["Current OnBoard Temp"]
+            info["hostname"] = self._last_prompt.split(":", 1)[0].strip()
         return info
 
 
+def _context_kind(context: Optional[str]) -> str:
+    if not context:
+        return "root"
+    return re.sub(r"\b\d+\b", "<n>", context.strip().lower())
+
+
 def _find_error(text: str) -> Optional[str]:
-    m = _ERROR_RE.search(text or "")
-    return m.group(0) if m else None
+    match = _ERROR_RE.search(text or "")
+    return match.group(0) if match else None
 
 
-def _clean(text: str, command: str, prompt: "re.Pattern", pager: "re.Pattern") -> str:
+def _clean(text: str, command: str, prompt: re.Pattern, pager: re.Pattern) -> str:
     text = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     lines = text.split("\n")
     if command and lines and command.strip() in lines[0]:
         lines = lines[1:]
-    lines = [ln for ln in lines
-             if not prompt.search(ln) and not pager.search(ln)]
+    lines = [line for line in lines
+             if not prompt.search(line) and not pager.search(line)]
     return "\n".join(lines).strip("\n")
