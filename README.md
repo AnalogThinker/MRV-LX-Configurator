@@ -15,8 +15,10 @@ a live SSH activity log, an xterm.js terminal, and multi-device support.
 ```bash
 git clone https://github.com/AnalogThinker/MRV-LX-Configurator.git
 cd MRV-LX-Configurator && sudo bash install.sh
+```
 
 # B) straight from a git repo:
+```bash
 sudo REPO=https://github.com/you/lxconsole.git bash install.sh
 ```
 
