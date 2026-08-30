@@ -56,29 +56,90 @@ def generic_keyvalue(text: str) -> dict:
 
 
 def cli_help(text: str) -> dict:
-    options: list[dict] = []
-    placeholders: list[dict] = []
+    """Parse LX context-sensitive help into guided UI choices.
+
+    The LX wraps long descriptions across multiple indented lines. Some
+    placeholders, such as ``<speed>``, describe a finite set in parentheses:
+
+        <speed>  Enter the speed (auto, 134, ..., 2400,
+                 4800, ..., 921600)
+
+    Continuation lines are joined before extracting those values.
+    """
+    entries: list[dict] = []
+    current: dict | None = None
     accepts_cr = False
-    for raw in text.split("\n"):
+
+    for raw in text.splitlines():
         if not raw.strip() or "Type a key to continue" in raw:
             continue
-        indent = len(raw) - len(raw.lstrip())
-        s = raw.strip()
-        parts = re.split(r"\s{2,}", s, maxsplit=1)
-        kw = parts[0].strip()
+
+        stripped = raw.strip()
+        parts = re.split(r"\s{2,}", stripped, maxsplit=1)
+        token = parts[0].strip()
         desc = parts[1].strip() if len(parts) > 1 else ""
-        if kw == "<cr>":
+
+        if token == "<cr>":
             accepts_cr = True
+            current = None
             continue
-        if kw.startswith("<") and kw.endswith(">"):
-            placeholders.append({"value": kw, "desc": desc})
+
+        is_placeholder = token.startswith("<") and token.endswith(">")
+        is_option = bool(re.fullmatch(r"[A-Za-z0-9][\w+.\-/]*", token))
+
+        if is_placeholder or is_option:
+            current = {
+                "token": token,
+                "desc": desc,
+                "placeholder": is_placeholder,
+            }
+            entries.append(current)
             continue
-        if not desc and indent >= 8:
+
+        # Help descriptions can wrap onto highly indented lines. If the line
+        # isn't a new keyword, append it to the preceding entry's description.
+        if current is not None:
+            current["desc"] = " ".join(
+                part for part in (current["desc"], stripped) if part
+            )
+
+    options: list[dict] = []
+    placeholders: list[dict] = []
+
+    for entry in entries:
+        token = entry["token"]
+        desc = entry["desc"]
+
+        if not entry["placeholder"]:
+            options.append({"value": token, "desc": desc})
             continue
-        if re.match(r"^[A-Za-z0-9][\w+.\-/]*$", kw):
-            options.append({"value": kw, "desc": desc})
-    return {"type": "cli_help", "options": options, "placeholders": placeholders,
-            "freeform": bool(placeholders), "accepts_cr": accepts_cr}
+
+        # Extract a finite comma-separated value list from parentheses.
+        # Require at least one comma to avoid treating ordinary prose as an enum.
+        enum_match = re.search(r"\(([^()]*,[^()]*)\)", desc)
+        if enum_match:
+            values = [
+                value.strip()
+                for value in enum_match.group(1).split(",")
+                if value.strip()
+            ]
+
+            if values:
+                options.extend(
+                    {"value": value, "desc": ""}
+                    for value in values
+                )
+                continue
+
+        placeholders.append({"value": token, "desc": desc})
+
+    return {
+        "type": "cli_help",
+        "options": options,
+        "placeholders": placeholders,
+        "freeform": bool(placeholders),
+        "accepts_cr": accepts_cr,
+    }
 
 
 REGISTRY: dict[str, Callable[[str], dict]] = {
