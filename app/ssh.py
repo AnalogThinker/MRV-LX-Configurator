@@ -138,10 +138,10 @@ class LXConnection:
         return self._proc
 
     async def _enable(self, proc, remember: bool = True) -> None:
-        if remember and (self._enabled or self._last_prompt.endswith(">>")):
-            self._enabled = True
-            return
-        if not remember and self._last_prompt.endswith(">>"):
+        # Privilege state belongs to a specific CLI process. Disposable help
+        # sessions must never inherit the persistent control session's state,
+        # and their prompts must never make the control session look enabled.
+        if remember and self._enabled:
             return
         self._emit("tx", data=self.cfg.enable_command)
         proc.stdin.write(self.cfg.enable_command + "\r")
@@ -240,7 +240,7 @@ class LXConnection:
                         conn.abort()
 
     async def _read_help(self, proc, timeout: int) -> str:
-        """Read help, advance each distinct pager once, and stop at the prompt."""
+        """Read help, advance each distinct pager once, and stop at prompt."""
         parts: list[str] = []
         tail = ""
         pager_armed = True
@@ -256,7 +256,6 @@ class LXConnection:
                         )
                     except asyncio.TimeoutError:
                         break
-
                     if not chunk:
                         break
 
@@ -264,8 +263,6 @@ class LXConnection:
                     self._emit("rx", data=chunk)
                     tail = (tail + chunk)[-2048:]
 
-                    # A final LX prompt means help is complete. Check this before
-                    # pager handling so an old marker cannot trigger extra spaces.
                     if self._prompt.search(tail):
                         break
 
@@ -280,8 +277,6 @@ class LXConnection:
                         tail = tail[pager_match.end():]
                         continue
 
-                    # Rearm only after meaningful non-bell output arrives and the
-                    # consumed pager marker is no longer present in the tail.
                     meaningful = chunk.replace("\x07", "").strip()
                     if meaningful and not self._pager.search(tail):
                         pager_armed = True
