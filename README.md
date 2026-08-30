@@ -19,7 +19,7 @@ Copy the project into your LXC (or point it at a git repo), then:
 cd lxconsole && sudo bash install.sh
 
 # B) straight from a git repo:
-sudo REPO=https://github.com/you/lxconsole.git bash install.sh
+sudo REPO=https://github.com/AnalogThinker/MRV-LX-Configurator bash install.sh
 ```
 
 `install.sh` installs Python + deps, creates a venv, writes a **systemd
