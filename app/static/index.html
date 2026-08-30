@@ -3,19 +3,19 @@
 <title>MRV LX Configurator</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
 <style>
-:root{--bg:#0f1720;--panel:#16212e;--edge:#293a50;--fg:#e6edf3;--muted:#8aa0b4;--blue:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#e3b341}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px system-ui,Segoe UI,sans-serif}header{display:flex;gap:16px;align-items:center;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--edge);flex-wrap:wrap}h1{font-size:16px;margin:0}h2{margin:0 0 12px;color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.05em}.spacer{flex:1}.banner{display:flex;gap:15px;flex-wrap:wrap}.item{display:flex;flex-direction:column}.item span{font-size:10px;color:var(--muted);text-transform:uppercase}.status{display:flex;gap:7px;align-items:center;color:var(--muted);font-size:12px}.dot{width:10px;height:10px;border-radius:50%;background:#455}.dot.idle{background:var(--green)}.dot.busy,.dot.connecting{background:var(--yellow);animation:pulse 1s infinite}.dot.error{background:var(--red)}@keyframes pulse{50%{opacity:.35}}button{border:0;border-radius:6px;padding:7px 11px;background:#1f6feb;color:white;cursor:pointer}button.ghost{background:#22303f}button.green{background:#238636}button.red{background:#a03030}button:disabled{opacity:.45;cursor:not-allowed}.page{max-width:1500px;margin:auto;padding:14px}.panel{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:14px;margin-bottom:14px}.guided{border-color:#3976b8}.tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}.tabs button{background:#22303f}.tabs button.active{background:#1f6feb}.field{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;align-items:center;margin-bottom:10px}.field label{color:var(--muted);font-size:12px}input,select{width:100%;background:#0d1521;color:var(--fg);border:1px solid var(--edge);border-radius:6px;padding:8px}.path-level{display:grid;grid-template-columns:120px minmax(0,1fr) 34px;gap:10px;align-items:center;margin-bottom:9px}.path-level label{color:var(--muted);font-size:12px}.preview{background:#0b111a;border:1px solid var(--edge);border-radius:7px;padding:10px;font:12px ui-monospace,monospace;white-space:pre-wrap}.command-display{background:#111827;border:1px dashed #43536a;color:#b8c7d9;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}.actions{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px}.groups details{border-bottom:1px solid #22303f;padding:8px 0}.groups summary{cursor:pointer;color:var(--blue);font-weight:600}.action{display:flex;justify-content:space-between;align-items:center;padding:5px}.output{min-height:280px;max-height:520px;overflow:auto}.log{height:420px;max-height:420px;overflow:auto;font:11.5px ui-monospace,monospace;white-space:pre-wrap}.alert{display:none;background:#3a1416;border:1px solid var(--red);color:#ffb4ae;padding:9px;border-radius:7px;margin-bottom:10px}.alert.show{display:block}.overlay{position:fixed;inset:0;background:rgba(5,9,15,.9);display:flex;align-items:center;justify-content:center;z-index:10}.overlay.hidden,.hidden{display:none}.card{width:420px;max-width:94vw;background:var(--panel);border:1px solid var(--edge);border-radius:12px;padding:22px}.connectlog{height:105px;overflow:auto;background:#0b111a;border:1px solid var(--edge);padding:8px;border-radius:7px;color:var(--muted);font:11px ui-monospace,monospace;white-space:pre-wrap;margin:10px 0}.two{display:flex;gap:9px}.two>*{flex:1}.hint{color:var(--muted);font-size:12px}.buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}#term{height:360px}@media(max-width:850px){.actions{grid-template-columns:1fr}.field,.path-level{grid-template-columns:1fr}.page{padding:8px}}
+:root{--bg:#0f1720;--panel:#16212e;--edge:#293a50;--fg:#e6edf3;--muted:#8aa0b4;--blue:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#e3b341}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px system-ui,Segoe UI,sans-serif}header{display:flex;gap:16px;align-items:center;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--edge);flex-wrap:wrap}h1{font-size:16px;margin:0}h2{margin:0 0 12px;color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.05em}.spacer{flex:1}.banner{display:flex;gap:15px;flex-wrap:wrap}.item{display:flex;flex-direction:column}.item span{font-size:10px;color:var(--muted);text-transform:uppercase}.status{display:flex;gap:7px;align-items:center;color:var(--muted);font-size:12px}.dot{width:10px;height:10px;border-radius:50%;background:#455}.dot.idle{background:var(--green)}.dot.busy,.dot.connecting{background:var(--yellow);animation:pulse 1s infinite}.dot.error{background:var(--red)}@keyframes pulse{50%{opacity:.35}}button{border:0;border-radius:6px;padding:7px 11px;background:#1f6feb;color:white;cursor:pointer}button.ghost{background:#22303f}button.green{background:#238636}button.red{background:#a03030}button:disabled{opacity:.45;cursor:not-allowed}.page{max-width:1500px;margin:auto;padding:14px}.panel{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:14px;margin-bottom:14px}.guided{border-color:#3976b8}.tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}.tabs button{background:#22303f}.tabs button.active{background:#1f6feb}.field{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;align-items:center;margin-bottom:10px}.field label{color:var(--muted);font-size:12px}input,select{width:100%;background:#0d1521;color:var(--fg);border:1px solid var(--edge);border-radius:6px;padding:8px}.path-level{display:grid;grid-template-columns:120px minmax(0,1fr) 34px;gap:10px;align-items:center;margin-bottom:9px}.path-level label{color:var(--muted);font-size:12px}.preview{background:#0b111a;border:1px solid var(--edge);border-radius:7px;padding:10px;font:12px ui-monospace,monospace;white-space:pre-wrap}.actions{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px}.groups details{border-bottom:1px solid #22303f;padding:8px 0}.groups summary{cursor:pointer;color:var(--blue);font-weight:600}.action{display:flex;justify-content:space-between;align-items:center;padding:5px}.output{min-height:280px;max-height:520px;overflow:auto}.log{height:420px;max-height:420px;overflow:auto;font:11.5px ui-monospace,monospace;white-space:pre-wrap}.alert{display:none;background:#3a1416;border:1px solid var(--red);color:#ffb4ae;padding:9px;border-radius:7px;margin-bottom:10px}.alert.show{display:block}.overlay{position:fixed;inset:0;background:rgba(5,9,15,.9);display:flex;align-items:center;justify-content:center;z-index:10}.overlay.hidden,.hidden{display:none}.card{width:420px;max-width:94vw;background:var(--panel);border:1px solid var(--edge);border-radius:12px;padding:22px}.connectlog{height:105px;overflow:auto;background:#0b111a;border:1px solid var(--edge);padding:8px;border-radius:7px;color:var(--muted);font:11px ui-monospace,monospace;white-space:pre-wrap;margin:10px 0}.two{display:flex;gap:9px}.two>*{flex:1}.hint{color:var(--muted);font-size:12px}.buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}#term{height:360px}@media(max-width:850px){.actions{grid-template-columns:1fr}.field,.path-level{grid-template-columns:1fr}.page{padding:8px}}
 </style></head><body>
 <div id="overlay" class="overlay"><div class="card"><h2>Connect to an LX device</h2><div class="field"><label>Host / IP</label><input id="f_host" placeholder="192.168.0.50"></div><div class="two"><div><label class="hint">SSH port</label><input id="f_port" value="22"></div><div><label class="hint">Username</label><input id="f_user" value="InReach"></div></div><div class="two"><div><label class="hint">Password</label><input id="f_pass" type="password" value="access"></div><div><label class="hint">Enable password</label><input id="f_enpass" type="password" value="system"></div></div><div id="connErr" class="alert"></div><div id="connectActivity" class="connectlog">Ready.</div><button id="connectBtn" onclick="connectDevice()" style="width:100%">Connect</button></div></div>
 <header id="header" class="hidden"><h1>MRV LX Configurator</h1><div id="banner" class="banner"></div><span class="spacer"></span><span class="status"><span id="dot" class="dot"></span><span id="statusText">idle</span></span><button class="red" onclick="disconnectDevice()">Disconnect</button></header>
 <main id="app" class="page hidden">
-<section class="panel guided"><h2>Guided port configuration</h2><div class="tabs" id="categories"><button class="active" data-cat="serial" onclick="setCategory('serial')">Serial port</button><button data-cat="connection" onclick="setCategory('connection')">Access & connection</button><button data-cat="device" onclick="setCategory('device')">Attached device</button><button data-cat="misc" onclick="setCategory('misc')">Misc / advanced</button></div><div class="field"><label>Port</label><select id="gPort" onchange="startConfig()"><option value="">Loading ports...</option></select></div><div id="path"></div><div class="field"><label>Generated command</label><div id="commandPreview" class="preview command-display">Select a port and command.</div></div><div id="completeHint" class="hint"></div><div class="buttons"><button id="applyBtn" disabled onclick="applyConfig(false)">Apply</button><button id="saveBtn" class="green" disabled onclick="applyConfig(true)">Apply & Save</button><button class="ghost" onclick="resetPath()">Reset path</button><button class="ghost" onclick="saveOnly()">Save to flash only</button></div></section>
+<section class="panel guided"><h2>Guided port configuration</h2><div class="tabs" id="categories"><button class="active" data-cat="serial" onclick="setCategory('serial')">Serial port</button><button data-cat="connection" onclick="setCategory('connection')">Access & connection</button><button data-cat="device" onclick="setCategory('device')">Attached device</button><button data-cat="misc" onclick="setCategory('misc')">Misc / advanced</button></div><div class="field"><label>Port</label><select id="gPort" onchange="startConfig()"><option value="">Loading ports...</option></select></div><div id="path"></div><div class="field"><label>Generated command</label><div id="commandPreview" class="preview">Select a port and command.</div></div><div id="completeHint" class="hint"></div><div class="buttons"><button id="applyBtn" disabled onclick="applyConfig(false)">Apply</button><button id="saveBtn" class="green" disabled onclick="applyConfig(true)">Apply & Save</button><button class="ghost" onclick="resetPath()">Reset path</button><button class="ghost" onclick="saveOnly()">Save to flash only</button></div></section>
 <section class="panel"><h2>Live SSH activity</h2><div id="alert" class="alert"></div><div class="buttons" style="float:right;margin-top:-38px"><button class="ghost" onclick="clearLog()">Clear</button></div><div id="log" class="preview log">-</div></section>
 <section class="panel"><h2>Read-only device information</h2><div class="actions"><div><div id="actionGroups" class="groups"></div><div class="panel" style="margin-top:12px"><h2>Async port detail</h2><div class="field"><label>Port</label><select id="readPort"></select></div><div class="field"><label>View</label><select id="readType"><option>characteristics</option><option>status</option><option>apd</option><option>databuffer</option><option>login</option><option>lpd</option><option>manage</option><option>modem</option><option>rfc2217</option><option>rs485</option><option>signal</option><option>tcp</option><option>tcppipe</option><option>users</option></select></div><button onclick="runPortRead()">Run port view</button></div></div><div><div id="readAlert" class="alert"></div><div id="out" class="preview output">Select a read action.</div></div></div></section>
 <section class="panel"><details><summary><b>Raw terminal (advanced)</b></summary><div id="term"></div><p class="hint">Manual escape hatch through a separate SSH connection.</p></details></section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
 <script>
-let TOKEN=localStorage.getItem('lx_token'),REG={},es,connectES,term,ws,ports=[],category='serial',pathTokens=[],pathLabels=[],lastHelp=null;
+let TOKEN=localStorage.getItem('lx_token'),REG={},es,connectES,term,ws,ports=[],category='serial',pathTokens=[],lastHelp=null;
 const $=id=>document.getElementById(id);const GROUPS={serial:new Set(['name','speed','bits','stopbits','parity','flowcontrol','autobaud','autohangup','break','cr','dtr','dsr','rts']),connection:new Set(['access','authentication','connect','manage','monitor','tcp','telnet','ssh','verification','rfc2217','tcppipe']),device:new Set(['apd','modem','outlet','power','sensor','device','lpd','rs485','signal','databuffer','login'])};
 function catOf(v){for(const [k,set] of Object.entries(GROUPS))if(set.has(v))return k;return'misc'}
 async function api(path,opts={}){opts.headers=Object.assign({'Content-Type':'application/json'},opts.headers||{});if(TOKEN)opts.headers['X-Session-Token']=TOKEN;return fetch(path,opts)}
@@ -26,94 +26,92 @@ function renderBanner(i){const vals=[['host',i.hostname||i.name],['IP / model',[
 async function disconnectDevice(){try{await api('/api/disconnect',{method:'POST'})}catch{}es?.close();ws?.close();TOKEN=null;localStorage.removeItem('lx_token');location.reload()}
 async function loadPorts(){const j=await(await api('/api/action/port_async_summary',{method:'POST',body:'{"params":{}}'})).json();ports=j.parsed?.rows||[];const options='<option value="">- select port -</option>'+ports.map(p=>`<option value="${p.Port}">${p.Port} - ${esc(p['Port Name'])} (${p.Speed} ${p.Access})</option>`).join('');$('gPort').innerHTML=options;$('readPort').innerHTML=options}
 function setCategory(c){category=c;document.querySelectorAll('#categories button').forEach(b=>b.classList.toggle('active',b.dataset.cat===c));resetPath()}
-function resetPath(){pathTokens=[];pathLabels=[];lastHelp=null;$('path').innerHTML='';updatePreview();if($('gPort').value)discover()}
+function resetPath(){pathTokens=[];lastHelp=null;$('path').innerHTML='';updatePreview();if($('gPort').value)discover()}
 function startConfig(){resetPath()}
-async function discover(label){
-  const port=$('gPort').value;if(!port)return;
-  const holder=document.createElement('div');holder.className='path-level';
-  const displayLabel=label||'Setting';
-  holder.dataset.level=String(pathTokens.length);
-  holder.innerHTML=`<label>${esc(displayLabel)}</label><select disabled><option>Discovering...</option></select><span></span>`;
-  $('path').appendChild(holder);
-  const tokens=pathTokens.join(' ');
-  try{
-    const r=await api('/api/introspect',{method:'POST',body:JSON.stringify({context:`port async ${port}`,tokens})});
-    const j=await r.json();
-    if(!r.ok||j.error)throw Error(j.error||'Discovery failed');
-    lastHelp=j;
-    renderLevel(holder,j);
-  }catch(e){
-    holder.querySelector('select').innerHTML=`<option>${esc(e.message)}</option>`;
-  }
-  updatePreview();
-}
-function nextLabel(option){
-  const value=String(option?.value||'').trim();
-  if(!value)return'Next option';
-  return value.charAt(0).toUpperCase()+value.slice(1);
-}
-function renderLevel(holder,j){
-  const select=holder.querySelector('select');
-  const all=j.options||[];
-  const opts=pathTokens.length?all:all.filter(o=>catOf(o.value)===category);
-  const placeholders=j.placeholders||[];
-
-  // A terminal help response containing only <cr> means the command is
-  // complete. Remove the provisional empty dropdown instead of displaying it.
-  if(j.accepts_cr&&!opts.length&&!placeholders.length){
-    holder.remove();
-    setApply(true);
-    updatePreview();
-    return;
-  }
-
-  select.disabled=false;
-  let html='<option value="">- select -</option>';
-  html+=opts.map((o,i)=>`<option value="${esc(o.value)}" data-index="${i}">${esc(o.value)}${o.desc?' - '+esc(o.desc):''}</option>`).join('');
-  html+=placeholders.map((p,i)=>`<option value="__input_${i}">${esc(p.value)} - ${esc(p.desc)}</option>`).join('');
-  select.innerHTML=html;
-  select.onchange=()=>chooseLevel(holder,select,j,opts);
-  if(j.accepts_cr)holder.querySelector('span').textContent='✓';
-  setApply(j.accepts_cr);
-}
-function chooseLevel(holder,select,j,opts){
-  while(holder.nextElementSibling)holder.nextElementSibling.remove();
-  const level=Number(holder.dataset.level||0);
-  pathTokens=pathTokens.slice(0,level);
-  pathLabels=pathLabels.slice(0,level);
-  const value=select.value;
-  if(!value){lastHelp=j;setApply(j.accepts_cr);updatePreview();return}
-
-  if(value.startsWith('__input_')){
-    const ph=j.placeholders[+value.split('_').pop()];
-    const input=document.createElement('input');
-    input.placeholder=`${ph.value} - ${ph.desc}`;
-    select.replaceWith(input);
-    input.oninput=()=>{
-      pathTokens=pathTokens.slice(0,level);
-      if(input.value.trim())pathTokens.push(input.value.trim());
-      setApply(!!input.value.trim()||j.accepts_cr);
-      updatePreview();
-    };
-    input.focus();return;
-  }
-
-  const selected=opts.find(o=>o.value===value)||{value};
-  pathTokens.push(value);
-  pathLabels.push(nextLabel(selected));
-  updatePreview();
-  discover(nextLabel(selected));
-}
+async function discover(){const port=$('gPort').value;if(!port)return;const holder=document.createElement('div');holder.className='path-level';holder.innerHTML=`<label>${pathTokens.length?'Next level':'Setting'}</label><select disabled><option>Discovering...</option></select><span></span>`;$('path').appendChild(holder);const tokens=pathTokens.join(' ');try{const j=await(await api('/api/introspect',{method:'POST',body:JSON.stringify({context:`port async ${port}`,tokens})})).json();lastHelp=j;renderLevel(holder,j)}catch(e){holder.querySelector('select').innerHTML=`<option>${esc(e.message)}</option>`}updatePreview()}
+function renderLevel(holder,j){const select=holder.querySelector('select');const all=j.options||[];let opts=pathTokens.length?all:all.filter(o=>catOf(o.value)===category);select.disabled=false;let html='<option value="">- select -</option>';html+=opts.map(o=>`<option value="${esc(o.value)}">${esc(o.value)}${o.desc?' - '+esc(o.desc):''}</option>`).join('');if(j.placeholders?.length)html+=j.placeholders.map((p,i)=>`<option value="__input_${i}">${esc(p.value)} - ${esc(p.desc)}</option>`).join('');select.innerHTML=html;select.onchange=()=>chooseLevel(holder,select,j);if(j.accepts_cr)holder.querySelector('span').textContent='✓';setApply(j.accepts_cr)}
+function chooseLevel(holder,select,j){while(holder.nextElementSibling)holder.nextElementSibling.remove();pathTokens=pathTokens.slice(0,[...$('path').children].indexOf(holder));const value=select.value;if(!value){lastHelp=j;setApply(j.accepts_cr);updatePreview();return}if(value.startsWith('__input_')){const p=j.placeholders[+value.split('_').pop()];const input=document.createElement('input');input.placeholder=`${p.value} - ${p.desc}`;select.replaceWith(input);input.oninput=()=>{pathTokens=pathTokens.slice(0,[...$('path').children].indexOf(holder));if(input.value.trim())pathTokens.push(input.value.trim());setApply(!!input.value.trim()||j.accepts_cr);updatePreview()};input.focus();return}pathTokens.push(value);updatePreview();discover()}
 function command(){return pathTokens.join(' ').trim()}function updatePreview(){const c=command();$('commandPreview').textContent=c||'Select a command path.'}function setApply(ok){$('applyBtn').disabled=!ok;$('saveBtn').disabled=!ok;$('completeHint').textContent=ok?'The current command path is accepted by the device (<cr>).':'Select the next command level or enter a required value.'}
 async function applyConfig(save){const port=$('gPort').value,cmd=command();if(!port||!cmd)return;if(!confirm(`Apply${save?' and save':''}?\n\nconfiguration\nport async ${port}\n${cmd}\nend${save?'\nsave configuration flash':''}`))return;const j=await(await api('/api/config',{method:'POST',body:JSON.stringify({commands:[cmd],context:`port async ${port}`,save})})).json();showConfigResult(j);resetPath();loadPorts()}
 async function saveOnly(){if(!confirm('Save running configuration to flash?'))return;showConfigResult(await(await api('/api/save',{method:'POST'})).json())}
 function showConfigResult(j){const errors=(j.errors||[]);if(errors.length)showAlert(errors.join('; '));else clearAlert();$('commandPreview').textContent=(j.results||[]).map(x=>`$ ${x.command}\n${x.output||'(accepted)'}`).join('\n\n')+(j.saved?'\n\nSaved to flash.':'')}
-function buildActions(){const groups={};for(const [name,s] of Object.entries(REG.actions||{}))(groups[s.group||'Other']??=[]).push([name,s]);$('actionGroups').innerHTML=Object.entries(groups).map(([g,a])=>`<details><summary>${esc(g)}</summary>${a.map(([n,s])=>`<div class="action"><span>${esc(s.label)}</span><button class="ghost" onclick="runAction('${n}')">Run</button></div>`).join('')}</details>`).join('')}
+function buildActions(){const groups={};for(const [name,s] of Object.entries(REG.actions||{}))(groups[s.group||'Other']??=[]).push([name,s]);$('actionGroups').innerHTML=Object.entries(groups).map(([g,a])=>`<details ${g==='System'?'open':''}><summary>${esc(g)}</summary>${a.map(([n,s])=>`<div class="action"><span>${esc(s.label)}</span><button class="ghost" onclick="runAction('${n}')">Run</button></div>`).join('')}</details>`).join('')}
 async function runAction(n){$('out').textContent='Running...';const j=await(await api('/api/action/'+n,{method:'POST',body:'{"params":{}}'})).json();showOutput(j)}
 async function runPortRead(){const p=$('readPort').value,t=$('readType').value;if(!p)return;const cmd=`show port async ${p} ${t}`;$('out').textContent='Running '+cmd+'...';showOutput(await(await api('/api/run',{method:'POST',body:JSON.stringify({command:cmd})})).json())}
 function showOutput(j){if(j.error_detected){$('readAlert').textContent='Device reported: '+j.error_detected;$('readAlert').classList.add('show')}else $('readAlert').classList.remove('show');const p=j.parsed;if(p?.type==='table'){$('out').innerHTML=`$ ${esc(j.command)} · ${p.count} rows\n\n`+p.columns.join('\t')+'\n'+p.rows.map(r=>p.columns.map(c=>r[c]??'').join('\t')).join('\n')}else if(p?.type==='keyvalue'&&p.rows?.length)$('out').textContent=`$ ${j.command}\n\n`+p.rows.map(r=>r.join(': ')).join('\n');else $('out').textContent=`$ ${j.command||''}\n\n${j.output??j.error??''}`}
 function initStream(){es?.close();es=new EventSource('/api/stream?token='+encodeURIComponent(TOKEN));es.onmessage=e=>{try{handleEvent(JSON.parse(e.data))}catch{}};es.onerror=()=>setStatus('error','activity stream lost')}
-let logLines=[];function handleEvent(x){if(x.type==='status')setStatus(x.state,x.detail||x.state);else if(x.type==='tx')addLog('» '+x.data,'#e3b341');else if(x.type==='rx'){const s=String(x.data||'').replace(/\r/g,'').replace(/\n+$/,'');if(s.trim())addLog('« '+s.split('\n').join(' ⏎ '),'#8aa0b4')}else if(x.type==='info')addLog('· '+x.detail,'#3fb950');else if(x.type==='error'){addLog('✗ '+x.detail,'#f85149');showAlert(x.detail)}}function setStatus(s,t){$('dot').className='dot '+(['idle','busy','connecting','error'].includes(s)?s:'');$('statusText').textContent=t||s}function addLog(line,color){logLines.push(`<span style="color:#566">${new Date().toLocaleTimeString()}</span> <span style="color:${color}">${esc(line)}</span>`);if(logLines.length>800)logLines=logLines.slice(-800);$('log').innerHTML=logLines.join('\n');$('log').scrollTop=$('log').scrollHeight}function clearLog(){logLines=[];$('log').textContent='-'}function showAlert(m){$('alert').textContent='Device reported: '+m;$('alert').classList.add('show')}function clearAlert(){$('alert').classList.remove('show')}
+let logLines=[];
+let rxBuffer='';
+let rxFlushTimer=null;
+
+function handleEvent(event){
+  if(event.type==='status'){
+    flushRxBuffer();
+    setStatus(event.state,event.detail||event.state);
+    return;
+  }
+  if(event.type==='tx'){
+    flushRxBuffer();
+    addLog('» '+event.data,'#e3b341');
+    return;
+  }
+  if(event.type==='rx'){
+    queueRx(event.data||'');
+    return;
+  }
+  if(event.type==='info'){
+    flushRxBuffer();
+    addLog('· '+event.detail,'#3fb950');
+    return;
+  }
+  if(event.type==='error'){
+    flushRxBuffer();
+    addLog('✗ '+event.detail,'#f85149');
+    showAlert(event.detail);
+  }
+}
+
+function queueRx(data){
+  rxBuffer+=String(data);
+  if(rxFlushTimer)clearTimeout(rxFlushTimer);
+  rxFlushTimer=setTimeout(flushRxBuffer,40);
+}
+
+function flushRxBuffer(){
+  if(rxFlushTimer){clearTimeout(rxFlushTimer);rxFlushTimer=null;}
+  if(!rxBuffer)return;
+  let text=rxBuffer;
+  rxBuffer='';
+  text=text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g,'');
+  text=text.replace(/\x07/g,'');
+  text=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  text=text.replace(/\n{3,}/g,'\n\n').replace(/^\n+|\n+$/g,'');
+  if(!text.trim())return;
+  addLog('« '+text,'#8aa0b4');
+}
+
+function setStatus(state,text){
+  $('dot').className='dot '+(['idle','busy','connecting','error'].includes(state)?state:'');
+  $('statusText').textContent=text||state;
+}
+
+function addLog(text,color){
+  const timestamp=new Date().toLocaleTimeString();
+  logLines.push(`<span style="color:#566">${timestamp}</span> <span style="color:${color}">${esc(text)}</span>`);
+  if(logLines.length>800)logLines=logLines.slice(-800);
+  $('log').innerHTML=logLines.join('\n');
+  $('log').scrollTop=$('log').scrollHeight;
+}
+
+function clearLog(){
+  if(rxFlushTimer){clearTimeout(rxFlushTimer);rxFlushTimer=null;}
+  rxBuffer='';
+  logLines=[];
+  $('log').textContent='-';
+}
+function showAlert(message){$('alert').textContent='Device reported: '+message;$('alert').classList.add('show')}
+function clearAlert(){$('alert').classList.remove('show')}
+
 function initTerminal(){term=new Terminal({fontSize:13,theme:{background:'#0b111a'}});const fit=new FitAddon.FitAddon();term.loadAddon(fit);term.open($('term'));fit.fit();const proto=location.protocol==='https:'?'wss':'ws';ws=new WebSocket(`${proto}://${location.host}/ws/terminal?token=${encodeURIComponent(TOKEN)}`);ws.onmessage=e=>term.write(e.data);term.onData(d=>ws.readyState===1&&ws.send(d))}
 (async()=>{REG=await(await fetch('/api/actions')).json();const d=REG.defaults||{};for(const [id,k] of [['f_host','host'],['f_port','port'],['f_user','username'],['f_pass','password'],['f_enpass','enable_password']])if(d[k])$(id).value=d[k];if(TOKEN){const r=await api('/api/info');if(r.ok)enter((await r.json()).info);else{TOKEN=null;localStorage.removeItem('lx_token')}}})();
 </script></body></html>
