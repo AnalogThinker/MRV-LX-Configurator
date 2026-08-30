@@ -149,19 +149,21 @@ class LXConnection:
         await self._read_until_idle(proc, quiet=0.6)
         if self.cfg.enable or force_enable:
             self._emit("tx", data=self.cfg.enable_command)
-            proc.stdin.write(self.cfg.enable_command + "\n")
+            proc.stdin.write(self.cfg.enable_command + "\r")
             await asyncio.sleep(0.4)
             if self.cfg.enable_password:
-                proc.stdin.write(self.cfg.enable_password + "\n")
+                proc.stdin.write(self.cfg.enable_password + "\r")
             await self._read_until_prompt(proc, timeout=8)
             self._emit("info", detail="escalated to superuser")
 
     async def _one(self, proc, command: str) -> dict:
         self._emit("tx", data=command)
         self._emit("status", state="busy", detail=command)
-        proc.stdin.write(command + "\n")
-        out = await self._read_until_prompt(proc, timeout=self.cfg.command_timeout)
-        self._emit("status", state="idle")
+        proc.stdin.write(command + "\r")
+        try:
+            out = await self._read_until_prompt(proc, timeout=self.cfg.command_timeout)
+        finally:
+            self._emit("status", state="idle", detail="idle")
         cleaned = _clean(out, command, self._prompt, self._pager)
         result = {"command": command, "output": cleaned}
         err = _find_error(cleaned)
@@ -267,6 +269,7 @@ class LXConnection:
                         self._last_prompt = m.group(0).strip()
                         break
         except asyncio.TimeoutError:
+            self._emit("error", detail=f"command timed out after {timeout}s waiting for LX prompt")
             self._emit("status", state="error", detail="command timed out")
         return "".join(buf)
 
