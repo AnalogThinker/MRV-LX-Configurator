@@ -22,12 +22,7 @@ MRV LX Configurator provides a modern replacement using:
 The proprietary GUI-server protocol on TCP port 5040 is not used.
 
 ## Interface preview
-
-<p align="center">
-  <a href="docs/screenshots/classic-port-config.png">
-    <img src="docs/screenshots/classic-port-config.png" alt="MRV LX Configurator interface" width="1200">
-  </a>
-</p>
+<img width="1191" height="863" alt="Screenshot" src="https://github.com/user-attachments/assets/f0b45a9e-19bf-483c-8ebc-a4a28aa1a9b1" />
 
 The Classic Port Configuration interface loads the selected port's current settings, tracks modified fields, applies only pending changes, and can persist the running configuration to flash.
 
