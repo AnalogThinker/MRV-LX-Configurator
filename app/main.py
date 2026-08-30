@@ -18,6 +18,7 @@ from . import parsers
 from .events import bus
 from .sessions import manager
 from .ssh import DeviceConfig
+from .port_schema import PORT_SCHEMA, parse_port_profile
 
 HERE = pathlib.Path(__file__).parent
 REGISTRY = yaml.safe_load((HERE / "commands.yaml").read_text())
@@ -54,6 +55,44 @@ async def _shutdown() -> None:
 async def index() -> FileResponse:
     return FileResponse(HERE / "static" / "index.html")
 
+
+
+
+@app.get("/api/port-schema")
+async def port_schema() -> JSONResponse:
+    return JSONResponse(PORT_SCHEMA)
+
+
+@app.get("/api/port/{port}/profile")
+async def port_profile(request: Request, port: int) -> JSONResponse:
+    conn = _require(request)
+    if not conn:
+        return JSONResponse({"error": "not connected"}, status_code=401)
+    if port < 0 or port > 256:
+        return JSONResponse({"error": "invalid port"}, status_code=400)
+    views = ["characteristics", "tcp", "login", "apd", "modem", "rs485", "signal", "databuffer"]
+    outputs: dict[str, str] = {}
+    errors: dict[str, str] = {}
+    for view in views:
+        command = f"show port async {port} {view}"
+        try:
+            result = await conn.run(command)
+            if result.get("error_detected"):
+                errors[view] = result["error_detected"]
+            else:
+                outputs[view] = result.get("output", "")
+        except Exception as exc:
+            errors[view] = str(exc)
+    summary_result = await conn.run("show port async summary")
+    summary_rows = parsers.port_async_summary(summary_result.get("output", "")).get("rows", [])
+    summary = next((row for row in summary_rows if str(row.get("Port")) == str(port)), {})
+    return JSONResponse({
+        "port": port,
+        "values": parse_port_profile(outputs, summary),
+        "outputs": outputs,
+        "errors": errors,
+        "summary": summary,
+    })
 
 @app.get("/api/actions")
 async def actions() -> JSONResponse:
