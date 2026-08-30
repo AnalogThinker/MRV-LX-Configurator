@@ -137,9 +137,11 @@ class LXConnection:
             await self._connect_control()
         return self._proc
 
-    async def _enable(self, proc) -> None:
-        if self._enabled or self._last_prompt.endswith(">>"):
+    async def _enable(self, proc, remember: bool = True) -> None:
+        if remember and (self._enabled or self._last_prompt.endswith(">>")):
             self._enabled = True
+            return
+        if not remember and self._last_prompt.endswith(">>"):
             return
         self._emit("tx", data=self.cfg.enable_command)
         proc.stdin.write(self.cfg.enable_command + "\r")
@@ -149,7 +151,8 @@ class LXConnection:
         response = await self._read_until_prompt(proc, 8)
         if not self._last_prompt.endswith(">>"):
             raise RuntimeError("Superuser prompt was not received")
-        self._enabled = True
+        if remember:
+            self._enabled = True
         self._emit("info", detail="escalated to superuser")
 
     async def run(self, command: str) -> dict:
@@ -215,7 +218,7 @@ class LXConnection:
                 conn = await asyncssh.connect(**self._connect_kwargs())
                 proc = await conn.create_process(term_type="vt100", term_size=(160, 48))
                 await self._read_until_prompt(proc, self.cfg.connect_timeout)
-                await self._enable(proc)
+                await self._enable(proc, remember=False)
                 if context:
                     await self._one(proc, "configuration")
                     await self._one(proc, context)
@@ -237,23 +240,55 @@ class LXConnection:
                         conn.abort()
 
     async def _read_help(self, proc, timeout: int) -> str:
+        """Read help, advance each distinct pager once, and stop at the prompt."""
         parts: list[str] = []
+        tail = ""
+        pager_armed = True
+        pager_advances = 0
+        max_pager_advances = 20
+
         try:
             async with asyncio.timeout(timeout):
                 while True:
                     try:
-                        chunk = await asyncio.wait_for(proc.stdout.read(4096), 0.65)
+                        chunk = await asyncio.wait_for(
+                            proc.stdout.read(4096), timeout=0.8
+                        )
                     except asyncio.TimeoutError:
                         break
+
                     if not chunk:
                         break
+
                     parts.append(chunk)
                     self._emit("rx", data=chunk)
-                    if self._pager.search("".join(parts)[-512:]):
+                    tail = (tail + chunk)[-2048:]
+
+                    # A final LX prompt means help is complete. Check this before
+                    # pager handling so an old marker cannot trigger extra spaces.
+                    if self._prompt.search(tail):
+                        break
+
+                    pager_match = self._pager.search(tail)
+                    if pager_match and pager_armed:
+                        if pager_advances >= max_pager_advances:
+                            raise RuntimeError("pager safety limit exceeded")
                         proc.stdin.write(" ")
+                        pager_advances += 1
+                        pager_armed = False
                         self._emit("info", detail="pager: sent space")
+                        tail = tail[pager_match.end():]
+                        continue
+
+                    # Rearm only after meaningful non-bell output arrives and the
+                    # consumed pager marker is no longer present in the tail.
+                    meaningful = chunk.replace("\x07", "").strip()
+                    if meaningful and not self._pager.search(tail):
+                        pager_armed = True
+
         except asyncio.TimeoutError:
-            pass
+            self._emit("status", state="error", detail="help discovery timed out")
+
         return "".join(parts)
 
     async def _read_until_prompt(self, proc, timeout: int) -> str:
