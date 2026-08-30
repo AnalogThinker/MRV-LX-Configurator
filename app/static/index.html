@@ -23,7 +23,7 @@
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
   button { background:#1f6feb; color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; font-size:13px; }
   button.ghost { background:#22303f; } button.danger { background:#a03030; } button:hover { filter:brightness(1.1); }
-  .wrap { display:grid; grid-template-columns: minmax(280px, 320px) minmax(0, 1fr); gap:14px; padding:14px; align-items:start; }
+  .wrap { display:grid; grid-template-columns:minmax(280px,320px) minmax(0,1fr); gap:14px; padding:14px; align-items:start; }
   .panel { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:12px; }
   h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 10px; }
   .action { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid #1d2a3a; }
@@ -49,8 +49,12 @@
   .alert a { color:#ffd7d2; cursor:pointer; text-decoration:underline; }
   .guided-focus { border-color:#3976b8; box-shadow:0 0 0 1px rgba(88,166,255,.12); margin-bottom:14px; }
   .guided-focus h2 { color:#8dc8ff; }
-  .guided-focus .field { display:grid; grid-template-columns:90px minmax(0,1fr); gap:10px; align-items:center; }
+  .guided-focus .field { display:grid; grid-template-columns:100px minmax(0,1fr); gap:10px; align-items:center; }
   .guided-focus .field label { margin:0; }
+  .category-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .category-tabs button { background:#22303f; }
+  .category-tabs button.active { background:#1f6feb; }
+  .connect-activity { background:#0b111a; border:1px solid var(--edge); border-radius:7px; padding:8px; height:92px; overflow:auto; font:11px ui-monospace,monospace; color:var(--muted); margin:8px 0 12px; white-space:pre-wrap; }
   @media (max-width:900px) { .wrap { grid-template-columns:1fr; } }
 </style>
 </head>
@@ -71,6 +75,7 @@
     </div>
     <div class="field"><label><input type="checkbox" id="f_enable" style="width:auto"> Auto-enter superuser (enable) for read commands too</label></div>
     <div class="err" id="connErr"></div>
+    <div class="connect-activity" id="connectActivity">Ready to connect.</div>
     <button id="connectBtn" onclick="doConnect()" style="width:100%">Connect</button>
   </div>
 </div>
@@ -109,6 +114,12 @@
   <main>
     <div class="panel guided-focus">
       <h2>Guided configuration <button class="ghost" style="float:right;font-size:11px;padding:2px 8px" onclick="loadPorts()">↻ reload</button></h2>
+      <div class="category-tabs" id="gCategories">
+        <button type="button" class="active" data-category="serial" onclick="setSettingCategory('serial')">Serial port</button>
+        <button type="button" data-category="connection" onclick="setSettingCategory('connection')">Access &amp; connection</button>
+        <button type="button" data-category="device" onclick="setSettingCategory('device')">Attached device</button>
+        <button type="button" data-category="misc" onclick="setSettingCategory('misc')">Misc / advanced</button>
+      </div>
       <div class="field"><label>Port</label><select id="gPort" style="width:100%" onchange="loadSettings()"><option>— connect &amp; reload —</option></select></div>
       <div class="field"><label>Setting</label><select id="gSetting" style="width:100%" onchange="loadValues()"><option>— pick a port first —</option></select></div>
       <div class="field"><label>Value</label>
@@ -122,7 +133,7 @@
     <div class="panel"><h2>Output</h2><div class="alert" id="alert"></div><pre id="out">—</pre></div>
     <div class="panel" style="margin-top:14px;">
       <h2>Live SSH activity <button class="ghost" style="float:right;font-size:11px;padding:2px 8px" onclick="clearLog()">clear</button></h2>
-      <pre id="log" style="max-height:180px;font-size:11.5px">—</pre>
+      <pre id="log" style="height:360px;max-height:360px;font-size:11.5px">—</pre>
     </div>
     <div class="panel" style="margin-top:14px;"><h2>Raw terminal (xterm.js)</h2><div id="term"></div><small class="hint">Browser → WebSocket → LXC backend → SSH connection to the MRV.</small></div>
   </main>
@@ -132,7 +143,31 @@
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
 <script>
 let TOKEN = localStorage.getItem('lx_token') || null;
-let REG = {}, es = null, term = null, ws = null;
+let REG = {}, es = null, term = null, ws = null, connectES = null;
+let guidedOptions = [], guidedCategory = 'serial';
+const SETTING_GROUPS = {
+  serial: new Set(['name','speed','bits','stopbits','parity','flowcontrol','autobaud','autohangup','break','cr','dtr','dsr','rts']),
+  connection: new Set(['access','authentication','connect','manage','monitor','tcp','telnet','ssh','verification']),
+  device: new Set(['apd','modem','outlet','power','sensor','device','lpd']),
+};
+function settingCategory(name){
+  if(SETTING_GROUPS.serial.has(name)) return 'serial';
+  if(SETTING_GROUPS.connection.has(name)) return 'connection';
+  if(SETTING_GROUPS.device.has(name)) return 'device';
+  return 'misc';
+}
+function setSettingCategory(category){
+  guidedCategory=category;
+  document.querySelectorAll('#gCategories button').forEach(b=>b.classList.toggle('active',b.dataset.category===category));
+  renderSettingOptions();
+}
+function renderSettingOptions(){
+  const sel=$('gSetting');
+  const opts=guidedOptions.filter(o=>settingCategory(o.value)===guidedCategory);
+  sel.innerHTML='<option value="">— select setting —</option>'+opts.map(o=>`<option value="${o.value}" title="${escapeHtml(o.desc)}">${o.value}${o.desc?' — '+truncate(o.desc,55):''}</option>`).join('');
+  if(!opts.length) sel.innerHTML='<option value="">(no advertised settings in this category)</option>';
+  $('gValue').innerHTML=''; $('gValueText').style.display='none'; $('gValue').style.display=''; $('gValueHint').textContent='';
+}
 const $ = id => document.getElementById(id);
 const out = () => $('out'), logEl = () => $('log');
 
@@ -162,6 +197,19 @@ async function loadDefaults(){
   if(d.enable_password)$('f_enpass').value=d.enable_password;
 }
 async function doConnect(){
+  const ca=$('connectActivity'); ca.textContent='Opening connection activity stream…';
+  if(connectES) connectES.close();
+  connectES=new EventSource('/api/stream');
+  connectES.onmessage=e=>{
+    let evt; try{evt=JSON.parse(e.data);}catch{return;}
+    let line='';
+    if(evt.type==='status') line=`${evt.state||'status'}: ${evt.detail||''}`;
+    else if(evt.type==='tx') line=`» ${evt.data}`;
+    else if(evt.type==='rx') line=`« ${(evt.data||'').replace(/\r/g,'').replace(/\n+/g,' ').trim()}`;
+    else if(evt.type==='info') line=`· ${evt.detail||''}`;
+    else if(evt.type==='error') line=`✗ ${evt.detail||''}`;
+    if(line){ ca.textContent += '\n'+line.slice(0,180); ca.scrollTop=ca.scrollHeight; }
+  };
   const body={host:$('f_host').value.trim(),port:parseInt($('f_port').value,10)||22,username:$('f_user').value.trim()||'InReach',password:$('f_pass').value,enable_password:$('f_enpass').value,enable:$('f_enable').checked};
   if(!body.host){ $('connErr').textContent='Host/IP is required.'; return; }
   $('connErr').textContent=''; $('connectBtn').textContent='Connecting…'; $('connectBtn').disabled=true;
@@ -171,7 +219,7 @@ async function doConnect(){
     if(!r.ok){ $('connErr').textContent=res.error||'Connection failed.'; return; }
     TOKEN=res.token; localStorage.setItem('lx_token',TOKEN); enterApp(res.info);
   }catch(e){ $('connErr').textContent='Network error: '+e.message; }
-  finally{ $('connectBtn').textContent='Connect'; $('connectBtn').disabled=false; }
+  finally{ if(connectES){connectES.close();connectES=null;} $('connectBtn').textContent='Connect'; $('connectBtn').disabled=false; }
 }
 async function doDisconnect(){
   try{ await api('/api/disconnect',{method:'POST'}); }catch{}
@@ -212,9 +260,8 @@ async function loadSettings(){
   if(!port){ sel.innerHTML='<option>— pick a port first —</option>'; return; }
   sel.innerHTML='<option>discovering…</option>';
   const res=await (await api('/api/introspect',{method:'POST',body:JSON.stringify({context:`port async ${port}`,tokens:''})})).json();
-  const opts=(res.options||[]).filter(o=>!['end','exit','show','monitor','no','default'].includes(o.value));
-  sel.innerHTML='<option value="">— select setting —</option>'+opts.map(o=>`<option value="${o.value}" title="${escapeHtml(o.desc)}">${o.value}${o.desc?' — '+truncate(o.desc,40):''}</option>`).join('');
-  $('gValue').innerHTML=''; $('gValueText').style.display='none'; $('gValue').style.display=''; $('gValueHint').textContent='';
+  guidedOptions=(res.options||[]).filter(o=>!['end','exit','show','monitor','no','default'].includes(o.value));
+  renderSettingOptions();
 }
 async function loadValues(){
   const port=$('gPort').value, setting=$('gSetting').value, selV=$('gValue'), txt=$('gValueText'), hint=$('gValueHint');
@@ -334,7 +381,7 @@ function setActivity(state,text){ $('dot').className='dot '+(['idle','busy','con
 function appendLog(line,color){
   const t=new Date().toLocaleTimeString();
   logLines.push(`<span style="color:#4b5b6c">${t}</span> <span style="color:${color||'#e6edf3'}">${escapeHtml(line)}</span>`);
-  if(logLines.length>200) logLines=logLines.slice(-200);
+  if(logLines.length>500) logLines=logLines.slice(-500);
   logEl().innerHTML=logLines.join('\n'); logEl().scrollTop=logEl().scrollHeight;
 }
 function clearLog(){ logLines=[]; logEl().innerHTML='—'; }
