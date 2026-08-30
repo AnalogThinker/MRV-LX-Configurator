@@ -41,9 +41,12 @@ function makeControl(field){
     if(current&&!vals.some(v=>norm(v)===norm(current)))vals.unshift(current);
     control.innerHTML='<option value="">- not reported -</option>'+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
   }else{
-    control=document.createElement('input');control.type=field.type==='number'?'number':'text';
+    control=document.createElement('input');
+    control.type=field.type==='number'?'number':'text';
   }
-  control.value=fieldValue(field.id);control.dataset.field=field.id;control.disabled=classicLoading;
+  control.value=fieldValue(field.id);
+  control.dataset.field=field.id;
+  control.disabled=false;
   control.onchange=()=>classicChanged(field,control.value);
   control.oninput=()=>classicChanged(field,control.value);
   return control;
@@ -71,19 +74,55 @@ function dirtyFields(){return PORT_SCHEMA.fields.filter(f=>classicValues[f.id]!=
 function updateDirty(){const dirty=dirtyFields();$('dirtyCount').textContent=dirty.length?`${dirty.length} pending change${dirty.length===1?'':'s'}`:'No pending changes';$('classicApply').disabled=!dirty.length||classicLoading;$('classicPersist').disabled=!dirty.length||classicLoading}
 function setClassicBusy(b,text){classicLoading=b;$('classicPanel').classList.toggle('classic-disabled',b);$('classicStatus').innerHTML=b?`<span class="spinner"></span> ${esc(text||'Working...')}`:esc(text||'');updateDirty()}
 async function loadClassicPort(force=false){
-  const port=$('gPort').value;pathTokens=[];$('path').innerHTML='';if(!port){classicOriginal={};classicValues={};renderClassicForm();return}
+  const port=$('gPort').value;
+  pathTokens=[];$('path').innerHTML='';
+  if(!port){classicOriginal={};classicValues={};renderClassicForm();return}
   setClassicBusy(true,'Loading current port configuration...');
-  try{const r=await api(`/api/port/${port}/profile${force?'?refresh=1':''}`);const j=await r.json();if(!r.ok)throw Error(j.error||'Port load failed');classicOriginal={...(j.values||{})};classicValues={...classicOriginal};const summary=j.summary||{};if(summary['Port Name'])classicOriginal.name=classicValues.name=summary['Port Name'];if(summary.Speed)classicOriginal.speed=classicValues.speed=summary.Speed;if(summary.Access)classicOriginal.access=classicValues.access=summary.Access;if(summary['TCP Port'])classicOriginal.tcp_port=classicValues.tcp_port=summary['TCP Port'];if(summary['SSH port'])classicOriginal.ssh_port=classicValues.ssh_port=summary['SSH port'];renderClassicForm();const failures=Object.keys(j.errors||{}).length;$('classicStatus').textContent=failures?`Loaded with ${failures} unsupported view${failures===1?'':'s'}`:'Current values loaded';}
-  catch(e){$('classicStatus').textContent='Load failed: '+e.message;showAlert(e.message)}finally{classicLoading=false;$('classicPanel').classList.remove('classic-disabled');updateDirty()}
+  try{
+    const r=await api(`/api/port/${port}/profile${force?'?refresh=1':''}`);
+    const j=await r.json();
+    if(!r.ok)throw Error(j.error||'Port load failed');
+    classicOriginal={...(j.values||{})};classicValues={...classicOriginal};
+    const summary=j.summary||{};
+    if(summary['Port Name'])classicOriginal.name=classicValues.name=summary['Port Name'];
+    if(summary.Speed)classicOriginal.speed=classicValues.speed=summary.Speed;
+    if(summary.Access)classicOriginal.access=classicValues.access=summary.Access;
+    if(summary['TCP Port'])classicOriginal.tcp_port=classicValues.tcp_port=summary['TCP Port'];
+    if(summary['SSH port'])classicOriginal.ssh_port=classicValues.ssh_port=summary['SSH port'];
+    const failures=Object.keys(j.errors||{}).length;
+    $('classicStatus').textContent=failures?`Loaded with ${failures} unsupported view${failures===1?'':'s'}`:'Current values loaded';
+  }catch(e){
+    $('classicStatus').textContent='Load failed: '+e.message;showAlert(e.message);
+  }finally{
+    classicLoading=false;
+    $('classicPanel').classList.remove('classic-disabled');
+    renderClassicForm();
+    updateDirty();
+  }
 }
 async function applyClassic(persist){
   const port=$('gPort').value,dirty=dirtyFields();if(!port||!dirty.length)return;
+  const requested=Object.fromEntries(dirty.map(f=>[f.id,classicValues[f.id]]));
   const commands=dirty.map(f=>f.command.replace('{value}',classicValues[f.id]));
   const preview=`configuration\nport async ${port}\n${commands.join('\n')}\nend${persist?'\nsave configuration flash':''}`;
   if(!confirm(`${persist?'Apply and persist':'Apply to running configuration'}?\n\n${preview}`))return;
   setClassicBusy(true,'Applying changes...');
-  try{const r=await api('/api/config',{method:'POST',body:JSON.stringify({commands,context:`port async ${port}`,save:persist})});const j=await r.json();if(!r.ok||j.error)throw Error(j.error||'Apply failed');if((j.errors||[]).length)throw Error(j.errors.join('; '));$('classicStatus').textContent='Applied. Reloading and verifying...';await loadClassicPort(true);for(const field of dirty){const wrap=document.querySelector(`.classic-field[data-field="${field.id}"]`);wrap?.classList.add(norm(classicOriginal[field.id])===norm(classicValues[field.id])?'verified':'mismatch')}$('classicStatus').textContent=persist?'Applied, verified, and persisted to flash':'Applied and reloaded from running configuration';}
-  catch(e){$('classicStatus').textContent='Apply failed: '+e.message;showAlert(e.message);classicLoading=false;$('classicPanel').classList.remove('classic-disabled');updateDirty()}
+  try{
+    const r=await api('/api/config',{method:'POST',body:JSON.stringify({commands,context:`port async ${port}`,save:persist})});
+    const j=await r.json();
+    if(!r.ok||j.error)throw Error(j.error||'Apply failed');
+    if((j.errors||[]).length)throw Error(j.errors.join('; '));
+    $('classicStatus').textContent='Applied. Reloading and verifying...';
+    await loadClassicPort(true);
+    for(const field of dirty){
+      const wrap=document.querySelector(`.classic-field[data-field="${field.id}"]`);
+      wrap?.classList.add(norm(classicOriginal[field.id])===norm(requested[field.id])?'verified':'mismatch');
+    }
+    $('classicStatus').textContent=persist?'Applied, verified, and persisted to flash':'Applied and reloaded from running configuration';
+  }catch(e){
+    $('classicStatus').textContent='Apply failed: '+e.message;showAlert(e.message);
+    classicLoading=false;$('classicPanel').classList.remove('classic-disabled');renderClassicForm();updateDirty();
+  }
 }
 function setCategory(c){category=c;document.querySelectorAll('#categories button').forEach(b=>b.classList.toggle('active',b.dataset.cat===c));resetPath()}
 function resetPath(){pathTokens=[];lastHelp=null;$('path').innerHTML='';updatePreview();if($('gPort').value)discover()}
@@ -95,7 +134,7 @@ function command(){return pathTokens.join(' ').trim()}function updatePreview(){c
 async function applyConfig(save){const port=$('gPort').value,cmd=command();if(!port||!cmd)return;if(!confirm(`Apply${save?' and save':''}?\n\nconfiguration\nport async ${port}\n${cmd}\nend${save?'\nsave configuration flash':''}`))return;const j=await(await api('/api/config',{method:'POST',body:JSON.stringify({commands:[cmd],context:`port async ${port}`,save})})).json();showConfigResult(j);resetPath();loadPorts()}
 async function saveOnly(){if(!confirm('Save running configuration to flash?'))return;showConfigResult(await(await api('/api/save',{method:'POST'})).json())}
 function showConfigResult(j){const errors=(j.errors||[]);if(errors.length)showAlert(errors.join('; '));else clearAlert();$('commandPreview').textContent=(j.results||[]).map(x=>`$ ${x.command}\n${x.output||'(accepted)'}`).join('\n\n')+(j.saved?'\n\nSaved to flash.':'')}
-function buildActions(){const groups={};for(const [name,s] of Object.entries(REG.actions||{}))(groups[s.group||'Other']??=[]).push([name,s]);$('actionGroups').innerHTML=Object.entries(groups).map(([g,a])=>`<details ${g==='System'?'open':''}><summary>${esc(g)}</summary>${a.map(([n,s])=>`<div class="action"><span>${esc(s.label)}</span><button class="ghost" onclick="runAction('${n}')">Run</button></div>`).join('')}</details>`).join('')}
+function buildActions(){const groups={};for(const [name,s] of Object.entries(REG.actions||{}))(groups[s.group||'Other']??=[]).push([name,s]);$('actionGroups').innerHTML=Object.entries(groups).map(([g,a])=>`<details><summary>${esc(g)}</summary>${a.map(([n,s])=>`<div class="action"><span>${esc(s.label)}</span><button class="ghost" onclick="runAction('${n}')">Run</button></div>`).join('')}</details>`).join('')}
 async function runAction(n){$('out').textContent='Running...';const j=await(await api('/api/action/'+n,{method:'POST',body:'{"params":{}}'})).json();showOutput(j)}
 async function runPortRead(){const p=$('readPort').value,t=$('readType').value;if(!p)return;const cmd=`show port async ${p} ${t}`;$('out').textContent='Running '+cmd+'...';showOutput(await(await api('/api/run',{method:'POST',body:JSON.stringify({command:cmd})})).json())}
 function showOutput(j){if(j.error_detected){$('readAlert').textContent='Device reported: '+j.error_detected;$('readAlert').classList.add('show')}else $('readAlert').classList.remove('show');const p=j.parsed;if(p?.type==='table'){$('out').innerHTML=`$ ${esc(j.command)} · ${p.count} rows\n\n`+p.columns.join('\t')+'\n'+p.rows.map(r=>p.columns.map(c=>r[c]??'').join('\t')).join('\n')}else if(p?.type==='keyvalue'&&p.rows?.length)$('out').textContent=`$ ${j.command}\n\n`+p.rows.map(r=>r.join(': ')).join('\n');else $('out').textContent=`$ ${j.command||''}\n\n${j.output??j.error??''}`}
