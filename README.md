@@ -21,6 +21,11 @@ MRV LX Configurator provides a modern replacement using:
 
 The proprietary GUI-server protocol on TCP port 5040 is not used.
 
+## Interface preview
+<p align="center">
+screenshot.png
+</p>
+
 ## Current features
 
 ### Device connection
