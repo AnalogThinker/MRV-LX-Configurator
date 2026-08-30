@@ -1,0 +1,5 @@
+fastapi==0.115.*
+uvicorn[standard]==0.32.*
+asyncssh==2.18.*
+pyyaml==6.*
+pydantic==2.*

@@ -1,0 +1,31 @@
+# commands.yaml — action registry. Verbs confirmed against real `show ?` on LX-4048T.
+actions:
+  system_status:   { label: "System status",           command: "show system status",           poll: true,  interval: 15, parser: generic_keyvalue }
+  system_summary:  { label: "System summary",          command: "show system summary",          poll: false }
+  system_characteristics: { label: "System characteristics", command: "show system characteristics", poll: false }
+  system_ip:       { label: "System IP",               command: "show system ip",               poll: false }
+  system_power:    { label: "System power",            command: "show system power",            poll: true,  interval: 20, parser: generic_keyvalue }
+  version:         { label: "Software version",         command: "show version",                 poll: false }
+  clock:           { label: "System clock",             command: "show clock",                   poll: true,  interval: 30 }
+  dashboard:       { label: "Dashboard status",         command: "show dashboard",               poll: true,  interval: 10 }
+  interface:       { label: "Interface status/config",  command: "show interface",               poll: true,  interval: 20 }
+  port_async_all:  { label: "Async ports — all",        command: "show port async all",          poll: false }
+  port_async_summary: { label: "Async ports — summary", command: "show port async summary",      poll: true,  interval: 15, parser: port_async_summary }
+  port_async_one:  { label: "One async port — detail",  command: "show port async {port}",       params: [port], poll: false, parser: port_async_detail }
+  port_ethernet:   { label: "Ethernet port",            command: "show port ethernet",           poll: true,  interval: 20 }
+  port_modem:      { label: "Modem configuration",      command: "show port modem",              poll: false }
+  outlet_all:      { label: "Outlets — all",            command: "show outlet all",              poll: false }
+  route:           { label: "IP routes",                command: "show route",                   poll: false }
+  ipv6:            { label: "IPv6 information",          command: "show ipv6",                    poll: false }
+  ipsec:           { label: "IP Security (IPsec)",       command: "show ipsec",                   poll: false }
+  snmp:            { label: "SNMP statistics",           command: "show snmp",                    poll: false }
+  service:         { label: "Configured services",       command: "show service",                 poll: false }
+  session:         { label: "Open connections",          command: "show session",                 poll: true,  interval: 20 }
+  users:           { label: "Connected users",           command: "show users",                   poll: true,  interval: 30 }
+  subscriber:      { label: "Subscriber information",     command: "show subscriber",              poll: false }
+  ntp:             { label: "NTP information",            command: "show ntp",                     poll: false }
+  trigger_action:  { label: "Trigger-Action config",     command: "show trigger-action",          poll: false }
+  web:             { label: "Web information",            command: "show web",                     poll: false }
+
+mutations:
+  save_config:     { label: "Save configuration",        command: "save configuration flash",     confirm: true }

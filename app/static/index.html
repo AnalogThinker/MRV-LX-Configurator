@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LX Console — modern</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
+<style>
+  :root { --bg:#0f1720; --panel:#16212e; --edge:#25344a; --fg:#e6edf3; --accent:#3fb950; --muted:#8aa0b4; --warn:#f85149; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:10px 18px; background:var(--panel); border-bottom:1px solid var(--edge); display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; white-space:nowrap; }
+  .spacer { flex:1; }
+  .banner { display:flex; gap:18px; align-items:center; font-size:12.5px; flex-wrap:wrap; }
+  .banner .item { display:flex; flex-direction:column; line-height:1.25; }
+  .banner .item b { color:var(--fg); font-size:13px; }
+  .banner .item span { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .activity { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+  .dot { width:10px; height:10px; border-radius:50%; background:#3a4a5c; transition:background .2s; }
+  .dot.idle { background:#3fb950; } .dot.busy { background:#e3b341; animation:pulse 1s infinite; }
+  .dot.connecting { background:#58a6ff; animation:pulse 1s infinite; } .dot.error { background:#f85149; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  button { background:#1f6feb; color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; font-size:13px; }
+  button.ghost { background:#22303f; } button.danger { background:#a03030; } button:hover { filter:brightness(1.1); }
+  .wrap { display:grid; grid-template-columns: 340px 1fr; gap:14px; padding:14px; }
+  .panel { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:12px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 10px; }
+  .action { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid #1d2a3a; }
+  .action span { font-size:13px; }
+  input, select, textarea { background:#0d1521; color:var(--fg); border:1px solid var(--edge); border-radius:6px; padding:6px 8px; font-size:13px; }
+  #cmd { width:100%; font-family: ui-monospace, Menlo, monospace; }
+  pre { background:#0b111a; border:1px solid var(--edge); border-radius:8px; padding:10px; overflow:auto; max-height:320px; font-size:12.5px; white-space:pre-wrap; }
+  .row { display:flex; gap:8px; margin-bottom:10px; }
+  #term { height:340px; }
+  .poll { color:var(--accent); font-size:11px; }
+  small.hint { color:var(--muted); }
+  .field { margin-bottom:11px; } .field label { display:block; font-size:11.5px; color:var(--muted); margin-bottom:4px; }
+  .overlay { position:fixed; inset:0; background:rgba(6,10,16,.85); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .overlay.hidden { display:none; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:12px; padding:22px; width:380px; max-width:92vw; }
+  .card h2 { font-size:15px; text-transform:none; letter-spacing:0; color:var(--fg); margin:0 0 4px; }
+  .card p.sub { color:var(--muted); font-size:12.5px; margin:0 0 16px; }
+  .card .field input { width:100%; } .two { display:flex; gap:10px; } .two > div { flex:1; }
+  .err { color:var(--warn); font-size:12.5px; min-height:16px; margin:4px 0 10px; }
+  .app-hidden { display:none; }
+  .alert { background:#3a1416; border:1px solid var(--warn); color:#ffb4ae; border-radius:8px; padding:9px 12px; margin-bottom:10px; font-size:12.5px; display:none; }
+  .alert.show { display:block; }
+  .alert a { color:#ffd7d2; cursor:pointer; text-decoration:underline; }
+</style>
+</head>
+<body>
+
+<div class="overlay" id="overlay">
+  <div class="card">
+    <h2>Connect to an LX device</h2>
+    <p class="sub">Enter the target device. Defaults are pre-filled and editable.</p>
+    <div class="field"><label>Host / IP address</label><input id="f_host" placeholder="192.168.0.50" autofocus /></div>
+    <div class="two">
+      <div class="field"><label>SSH port</label><input id="f_port" value="22" /></div>
+      <div class="field"><label>Username</label><input id="f_user" value="InReach" /></div>
+    </div>
+    <div class="two">
+      <div class="field"><label>Password</label><input id="f_pass" type="password" value="access" /></div>
+      <div class="field"><label>Enable (superuser) password</label><input id="f_enpass" type="password" value="system" /></div>
+    </div>
+    <div class="field"><label><input type="checkbox" id="f_enable" style="width:auto"> Auto-enter superuser (enable) for read commands too</label></div>
+    <div class="err" id="connErr"></div>
+    <button id="connectBtn" onclick="doConnect()" style="width:100%">Connect</button>
+  </div>
+</div>
+
+<header class="app-hidden" id="hdr">
+  <h1>LX Console <span style="color:var(--accent)">·</span> modern</h1>
+  <div class="banner" id="banner"></div>
+  <span class="spacer"></span>
+  <span class="activity"><span class="dot" id="dot"></span><span id="activityText">idle</span></span>
+  <button class="danger" onclick="doDisconnect()">Disconnect</button>
+</header>
+
+<div class="wrap app-hidden" id="appWrap">
+  <div>
+    <div class="panel">
+      <h2>Custom CLI command</h2>
+      <div class="row"><input id="cmd" placeholder="e.g. show version" onkeydown="if(event.key==='Enter')runCustom()" /></div>
+      <div class="row"><button onclick="runCustom()">Run</button><button class="ghost" onclick="document.getElementById('cmd').value=''">Clear</button></div>
+      <small class="hint">Escape hatch — sends any command over SSH.</small>
+    </div>
+    <div class="panel" style="margin-top:14px;"><h2>Read actions</h2><div id="actions"></div></div>
+    <div class="panel" style="margin-top:14px;">
+      <h2>Guided configuration <button class="ghost" style="float:right;font-size:11px;padding:2px 8px" onclick="loadPorts()">↻ reload</button></h2>
+      <div class="field"><label>Port</label><select id="gPort" style="width:100%" onchange="loadSettings()"><option>— connect &amp; reload —</option></select></div>
+      <div class="field"><label>Setting</label><select id="gSetting" style="width:100%" onchange="loadValues()"><option>— pick a port first —</option></select></div>
+      <div class="field"><label>Value</label>
+        <select id="gValue" style="width:100%"></select>
+        <input id="gValueText" style="width:100%;display:none" placeholder="enter value" />
+        <small class="hint" id="gValueHint"></small>
+      </div>
+      <div class="row"><button onclick="applyGuided(false)">Apply</button><button onclick="applyGuided(true)" style="background:#238636">Apply &amp; Save</button></div>
+      <small class="hint">Options pulled <b>live from the device</b> (works on any MRV — 8/48 port).</small>
+    </div>
+    <div class="panel" style="margin-top:14px;">
+      <h2>Configuration (manual)</h2>
+      <div class="row"><input id="cfgContext" placeholder="context (optional), e.g. port async 1" style="width:100%" /></div>
+      <div class="row"><textarea id="cfg" rows="4" style="width:100%;font-family:ui-monospace,monospace;font-size:12.5px" placeholder="in-context commands, one per line, e.g.&#10;speed 115200&#10;name Router1"></textarea></div>
+      <div class="row"><button onclick="applyConfig(false)">Apply</button><button onclick="applyConfig(true)" style="background:#238636">Apply &amp; Save</button></div>
+      <div class="row"><button class="ghost" onclick="saveFlash()">💾 Save to flash only</button></div>
+      <small class="hint">LX <b>hierarchical config</b>: <code>configuration</code> → <i>context</i> → commands → <code>end</code>. Save persists across reboot.</small>
+    </div>
+    <div class="panel" style="margin-top:14px;">
+      <h2>Auto-poll dashboard</h2>
+      <label><input type="checkbox" id="pollToggle" onchange="togglePoll()"> enable polling</label>
+      <div id="pollStatus" class="poll"></div>
+    </div>
+  </div>
+  <div>
+    <div class="panel"><h2>Output</h2><div class="alert" id="alert"></div><pre id="out">—</pre></div>
+    <div class="panel" style="margin-top:14px;">
+      <h2>Live SSH activity <button class="ghost" style="float:right;font-size:11px;padding:2px 8px" onclick="clearLog()">clear</button></h2>
+      <pre id="log" style="max-height:180px;font-size:11.5px">—</pre>
+    </div>
+    <div class="panel" style="margin-top:14px;"><h2>Raw terminal (xterm.js)</h2><div id="term"></div><small class="hint">Replaces the old J2SSH TelnetInternalFrame.</small></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script>
+let TOKEN = localStorage.getItem('lx_token') || null;
+let REG = {}, es = null, term = null, ws = null;
+const $ = id => document.getElementById(id);
+const out = () => $('out'), logEl = () => $('log');
+
+async function api(path, opts={}) {
+  opts.headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
+  if (TOKEN) opts.headers['X-Session-Token'] = TOKEN;
+  return fetch(path, opts);
+}
+
+function showAlert(msg){ const a=$('alert'); a.innerHTML=`⚠️ ${escapeHtml(msg)} — check the <a onclick="document.getElementById('log').scrollIntoView({behavior:'smooth'})">verbose activity log</a> below.`; a.classList.add('show'); }
+function clearAlert(){ $('alert').classList.remove('show'); }
+function scanForErrors(res){
+  const found=[];
+  if(res.error_detected) found.push(res.error_detected);
+  for(const s of (res.results||[])) if(s.error_detected) found.push(`${s.error_detected} (on: ${s.command})`);
+  if((res.errors||[]).length) for(const e of res.errors) if(!found.includes(e)) found.push(e);
+  const text=(res.output||'')+(res.results||[]).map(s=>s.output||'').join('\n');
+  if(/syntax error/i.test(text)&&!found.length) found.push('Syntax Error');
+  if(found.length) showAlert('Device reported: '+[...new Set(found)].join('; ')); else clearAlert();
+  return found.length>0;
+}
+
+async function loadDefaults(){
+  REG=await (await fetch('/api/actions')).json(); const d=REG.defaults||{};
+  if(d.host)$('f_host').value=d.host; if(d.port)$('f_port').value=d.port;
+  if(d.username)$('f_user').value=d.username; if(d.password)$('f_pass').value=d.password;
+  if(d.enable_password)$('f_enpass').value=d.enable_password;
+}
+async function doConnect(){
+  const body={host:$('f_host').value.trim(),port:parseInt($('f_port').value,10)||22,username:$('f_user').value.trim()||'InReach',password:$('f_pass').value,enable_password:$('f_enpass').value,enable:$('f_enable').checked};
+  if(!body.host){ $('connErr').textContent='Host/IP is required.'; return; }
+  $('connErr').textContent=''; $('connectBtn').textContent='Connecting…'; $('connectBtn').disabled=true;
+  try{
+    const r=await fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const res=await r.json();
+    if(!r.ok){ $('connErr').textContent=res.error||'Connection failed.'; return; }
+    TOKEN=res.token; localStorage.setItem('lx_token',TOKEN); enterApp(res.info);
+  }catch(e){ $('connErr').textContent='Network error: '+e.message; }
+  finally{ $('connectBtn').textContent='Connect'; $('connectBtn').disabled=false; }
+}
+async function doDisconnect(){
+  try{ await api('/api/disconnect',{method:'POST'}); }catch{}
+  cleanupStreams(); TOKEN=null; localStorage.removeItem('lx_token');
+  $('overlay').classList.remove('hidden'); $('hdr').classList.add('app-hidden'); $('appWrap').classList.add('app-hidden');
+}
+function cleanupStreams(){ if(es){es.close();es=null;} if(ws){try{ws.close();}catch{}ws=null;} }
+function enterApp(info){
+  renderBanner(info); $('overlay').classList.add('hidden');
+  $('hdr').classList.remove('app-hidden'); $('appWrap').classList.remove('app-hidden');
+  buildActions(); initStream(); initTerm(); loadPorts();
+}
+function renderBanner(info){
+  const items=[]; const push=(l,v)=>{ if(v) items.push(`<div class="item"><b>${escapeHtml(v)}</b><span>${l}</span></div>`); };
+  push('hostname',info.hostname||info.name); push('ip / model',[info.ip,info.model].filter(Boolean).join(' · '));
+  push('firmware',info.firmware); push('uptime',info.uptime); push('temp',info.temp);
+  push('connection',`${info.username}@${info.host}:${info.port}`);
+  $('banner').innerHTML=items.join('')||`<div class="item"><b>${info.host}:${info.port}</b><span>connected</span></div>`;
+}
+async function tryResume(){
+  if(!TOKEN){ $('overlay').classList.remove('hidden'); return; }
+  const r=await api('/api/info');
+  if(r.ok){ enterApp((await r.json()).info); } else { TOKEN=null; localStorage.removeItem('lx_token'); $('overlay').classList.remove('hidden'); }
+}
+
+async function loadPorts(){
+  const sel=$('gPort'); sel.innerHTML='<option>loading…</option>';
+  try{
+    const res=await (await api('/api/action/port_async_summary',{method:'POST',body:JSON.stringify({params:{}})})).json();
+    const rows=(res.parsed&&res.parsed.rows)||[];
+    if(!rows.length){ sel.innerHTML='<option value="">(no ports found)</option>'; return; }
+    sel.innerHTML='<option value="">— select port —</option>'+rows.map(r=>`<option value="${r['Port']}">${r['Port']} — ${r['Port Name']||''} (${r['Speed']||'?'} ${r['Access']||''})</option>`).join('');
+    $('gSetting').innerHTML='<option>— pick a port first —</option>'; $('gValue').innerHTML=''; $('gValueText').style.display='none'; $('gValue').style.display=''; $('gValueHint').textContent='';
+  }catch(e){ sel.innerHTML='<option value="">(error loading ports)</option>'; }
+}
+async function loadSettings(){
+  const port=$('gPort').value, sel=$('gSetting');
+  if(!port){ sel.innerHTML='<option>— pick a port first —</option>'; return; }
+  sel.innerHTML='<option>discovering…</option>';
+  const res=await (await api('/api/introspect',{method:'POST',body:JSON.stringify({context:`port async ${port}`,tokens:''})})).json();
+  const opts=(res.options||[]).filter(o=>!['end','exit','show','monitor','no','default'].includes(o.value));
+  sel.innerHTML='<option value="">— select setting —</option>'+opts.map(o=>`<option value="${o.value}" title="${escapeHtml(o.desc)}">${o.value}${o.desc?' — '+truncate(o.desc,40):''}</option>`).join('');
+  $('gValue').innerHTML=''; $('gValueText').style.display='none'; $('gValue').style.display=''; $('gValueHint').textContent='';
+}
+async function loadValues(){
+  const port=$('gPort').value, setting=$('gSetting').value, selV=$('gValue'), txt=$('gValueText'), hint=$('gValueHint');
+  if(!port||!setting) return;
+  selV.innerHTML='<option>discovering…</option>'; selV.style.display=''; txt.style.display='none'; hint.textContent='';
+  const res=await (await api('/api/introspect',{method:'POST',body:JSON.stringify({context:`port async ${port}`,tokens:setting})})).json();
+  const opts=(res.options||[]).filter(o=>!['end','exit'].includes(o.value));
+  if(opts.length){
+    selV.innerHTML=opts.map(o=>`<option value="${o.value}" title="${escapeHtml(o.desc)}">${o.value}${o.desc?' — '+truncate(o.desc,36):''}</option>`).join('');
+    selV.style.display=''; txt.style.display='none'; hint.textContent=res.accepts_cr?'value optional (accepts <cr>)':'';
+  } else if(res.freeform||(res.placeholders||[]).length){
+    const ph=(res.placeholders||[])[0]||{value:'<value>',desc:''};
+    selV.style.display='none'; txt.style.display=''; txt.value=''; txt.placeholder=ph.value+(ph.desc?` — ${ph.desc}`:''); hint.textContent='freeform: '+(ph.desc||ph.value);
+  } else { selV.innerHTML=''; selV.style.display='none'; txt.style.display='none'; hint.textContent=res.accepts_cr?'no value needed':'no options reported'; }
+}
+async function applyGuided(save){
+  const port=$('gPort').value, setting=$('gSetting').value;
+  if(!port||!setting){ alert('Pick a port and a setting.'); return; }
+  const val=($('gValue').style.display!=='none')?$('gValue').value:$('gValueText').value.trim();
+  const cmd=(setting+' '+val).trim(), context=`port async ${port}`;
+  const preview=`configuration\n${context}\n${cmd}\nend`+(save?'\nsave configuration flash':'');
+  if(!confirm(`${save?'Apply AND save':'Apply'} on port ${port}?\n\n`+preview)) return;
+  clearAlert(); out().innerHTML=''; out().textContent='applying…';
+  renderConfigResult(await (await api('/api/config',{method:'POST',body:JSON.stringify({commands:[cmd],context,save})})).json()); loadPorts();
+}
+function truncate(s,n){ s=String(s); return s.length>n?s.slice(0,n-1)+'…':s; }
+
+function buildActions(){
+  const box=$('actions'); box.innerHTML='';
+  for(const [name,spec] of Object.entries(REG.actions)){
+    const div=document.createElement('div'); div.className='action';
+    div.innerHTML=`<span>${spec.label}${spec.poll?' <em class="poll">(pollable)</em>':''}</span>`;
+    const b=document.createElement('button'); b.className='ghost'; b.textContent='run'; b.onclick=()=>runAction(name,spec);
+    div.appendChild(b); box.appendChild(div);
+  }
+}
+function show(res){
+  scanForErrors(res); const p=res.parsed;
+  if(p&&p.type==='keyvalue'&&p.rows) renderKeyValue(res);
+  else if(p&&p.type==='table'&&p.rows) renderGrid(res);
+  else { out().innerHTML=''; out().textContent=`$ ${res.command}\n\n${res.output??res.error??''}`; }
+}
+function cmdHeader(res,extra){ return `<div style="color:var(--muted);margin-bottom:8px">$ ${res.command}${extra?' · '+extra:''}</div>`; }
+function renderKeyValue(res){
+  const p=res.parsed; let h=cmdHeader(res);
+  if(p.title) h+=`<div style="font-weight:600;margin-bottom:8px">${p.title}</div>`;
+  h+='<table style="width:100%;border-collapse:collapse;font-size:12.5px">';
+  for(const [k,v] of p.rows) h+=`<tr><td style="padding:3px 10px 3px 0;color:var(--muted);white-space:nowrap;border-bottom:1px solid #1d2a3a">${escapeHtml(k)}</td><td style="padding:3px 0;border-bottom:1px solid #1d2a3a;font-family:ui-monospace,monospace">${escapeHtml(v)}</td></tr>`;
+  out().innerHTML=h+'</table>';
+}
+function renderGrid(res){
+  const p=res.parsed; let h=cmdHeader(res,`${p.count} rows`);
+  h+='<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>';
+  for(const c of p.columns) h+=`<th style="text-align:left;padding:4px 12px 4px 0;color:var(--accent);border-bottom:1px solid var(--edge);position:sticky;top:0;background:#0b111a">${c}</th>`;
+  h+='</tr></thead><tbody>';
+  for(const row of p.rows){ h+='<tr>'; for(const c of p.columns){ const v=row[c]??''; const hl=(c==='Access'&&v==='Local')?'color:var(--accent)':''; h+=`<td style="padding:3px 12px 3px 0;border-bottom:1px solid #1d2a3a;font-family:ui-monospace,monospace;${hl}">${escapeHtml(v)}</td>`; } h+='</tr>'; }
+  out().innerHTML=h+'</tbody></table>';
+}
+async function runCustom(){
+  const command=$('cmd').value.trim(); if(!command) return;
+  clearAlert(); out().innerHTML=''; out().textContent='running…';
+  show(await (await api('/api/run',{method:'POST',body:JSON.stringify({command})})).json());
+}
+async function runAction(name,spec){
+  const params={}; for(const p of (spec.params||[])){ const v=prompt(`Parameter: ${p}`); if(v===null) return; params[p]=v; }
+  clearAlert(); out().innerHTML=''; out().textContent='running…';
+  show(await (await api('/api/action/'+name,{method:'POST',body:JSON.stringify({params})})).json());
+}
+async function applyConfig(save){
+  const raw=$('cfg').value.split('\n').map(s=>s.trim()).filter(Boolean), context=$('cfgContext').value.trim();
+  if(!raw.length){ alert('Enter at least one command.'); return; }
+  const preview=(context?`configuration\n${context}\n`:'configuration\n')+raw.join('\n')+'\nend'+(save?'\nsave configuration flash':'');
+  if(!confirm(`${save?'Apply AND save to flash':'Apply'}?\n\nThe backend will run:\n\n`+preview)) return;
+  clearAlert(); out().innerHTML=''; out().textContent='applying…';
+  renderConfigResult(await (await api('/api/config',{method:'POST',body:JSON.stringify({commands:raw,context:context||null,save})})).json());
+}
+async function saveFlash(){
+  if(!confirm('Save running configuration to flash?')) return;
+  clearAlert(); out().textContent='saving to flash…';
+  renderConfigResult(await (await api('/api/save',{method:'POST'})).json());
+}
+function renderConfigResult(res){
+  scanForErrors(res);
+  if(res.error){ out().textContent='Error: '+res.error; return; }
+  let t=''; for(const s of (res.results||[])){ t+=`$ ${s.command}\n${s.output||'(no output)'}`; if(s.error_detected) t+=`\n  ⚠️ ${s.error_detected}`; t+='\n\n'; }
+  if(res.saved===true) t+='✅ Saved to flash (persists across reboot).\n';
+  else if(res.saved===false) t+='⚠️ Save may have failed — check output.\n';
+  out().textContent=t.trim()||'(done)';
+}
+let pollTimers=[];
+function togglePoll(){
+  const on=$('pollToggle').checked; pollTimers.forEach(clearInterval); pollTimers=[];
+  const status=$('pollStatus'); if(!on){ status.textContent='stopped'; return; }
+  let names=[];
+  for(const [name,spec] of Object.entries(REG.actions)){
+    if(!spec.poll) continue; names.push(spec.label);
+    const tick=async()=>{ const res=await (await api('/api/action/'+name,{method:'POST',body:JSON.stringify({params:{}})})).json(); status.textContent=`last: ${spec.label} @ ${new Date().toLocaleTimeString()}`; show(res); };
+    tick(); pollTimers.push(setInterval(tick,(spec.interval||15)*1000));
+  }
+  status.textContent='polling: '+names.join(', ');
+}
+function initStream(){
+  if(es){es.close();es=null;}
+  es=new EventSource('/api/stream?token='+encodeURIComponent(TOKEN));
+  es.onmessage=e=>{ let evt; try{evt=JSON.parse(e.data);}catch{return;} handleEvent(evt); };
+  es.onerror=()=>setActivity('error','stream lost');
+}
+let logLines=[];
+function handleEvent(evt){
+  if(evt.type==='status') setActivity(evt.state,evt.detail||evt.state);
+  else if(evt.type==='tx') appendLog(`» ${evt.data}`,'#e3b341');
+  else if(evt.type==='rx'){ const s=(evt.data||'').replace(/\r/g,'').replace(/\n+$/,''); if(s.trim()) appendLog(`« ${s.split('\n').join(' ⏎ ')}`.slice(0,240),'#8aa0b4'); }
+  else if(evt.type==='info') appendLog(`· ${evt.detail}`,'#3fb950');
+  else if(evt.type==='error'){ appendLog(`✗ ${evt.detail}`,'#f85149'); showAlert(evt.detail); }
+}
+function setActivity(state,text){ $('dot').className='dot '+(['idle','busy','connecting','error'].includes(state)?state:''); $('activityText').textContent=text||state; }
+function appendLog(line,color){
+  const t=new Date().toLocaleTimeString();
+  logLines.push(`<span style="color:#4b5b6c">${t}</span> <span style="color:${color||'#e6edf3'}">${escapeHtml(line)}</span>`);
+  if(logLines.length>200) logLines=logLines.slice(-200);
+  logEl().innerHTML=logLines.join('\n'); logEl().scrollTop=logEl().scrollHeight;
+}
+function clearLog(){ logLines=[]; logEl().innerHTML='—'; }
+function escapeHtml(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function initTerm(){
+  $('term').innerHTML='';
+  term=new Terminal({fontSize:13,theme:{background:'#0b111a'}});
+  const fit=new FitAddon.FitAddon(); term.loadAddon(fit); term.open($('term')); fit.fit();
+  const proto=location.protocol==='https:'?'wss':'ws';
+  ws=new WebSocket(`${proto}://${location.host}/ws/terminal?token=${encodeURIComponent(TOKEN)}`);
+  ws.onmessage=e=>term.write(e.data); term.onData(d=>ws.readyState===1&&ws.send(d));
+  window.addEventListener('resize',()=>{ try{fit.fit();}catch{} });
+}
+(async function(){ await loadDefaults(); await tryResume(); })();
+</script>
+</body>
+</html>
