@@ -253,11 +253,15 @@ class LXConnection:
                     help_text = await self._read_help(
                         proc, timeout=self.cfg.command_timeout
                     )
-                    proc.stdin.write("\x15")            # Ctrl-U: clear line
-                    await self._read_until_idle(proc, quiet=0.3)
-                    if context:
-                        await self._one(proc, "end")
-                    self._emit("status", state="idle", detail="idle")
+                    # The LX leaves the help probe in its editable command buffer.
+                    # Ctrl-U is not supported reliably, and sending "end" here can
+                    # be interpreted as part of the buffered probe. This connection
+                    # is disposable, so close it without attempting to clear/exit.
+                    self._emit(
+                        "status",
+                        state="idle",
+                        detail="discovery complete",
+                    )
             finally:
                 await self._close_operation(conn)
         return {"tokens": tokens, "context": context,
