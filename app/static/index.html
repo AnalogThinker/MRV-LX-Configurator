@@ -23,7 +23,7 @@
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
   button { background:#1f6feb; color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; font-size:13px; }
   button.ghost { background:#22303f; } button.danger { background:#a03030; } button:hover { filter:brightness(1.1); }
-  .wrap { display:grid; grid-template-columns: 340px 1fr; gap:14px; padding:14px; }
+  .wrap { display:grid; grid-template-columns: minmax(280px, 320px) minmax(0, 1fr); gap:14px; padding:14px; align-items:start; }
   .panel { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:12px; }
   h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 10px; }
   .action { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid #1d2a3a; }
@@ -47,6 +47,11 @@
   .alert { background:#3a1416; border:1px solid var(--warn); color:#ffb4ae; border-radius:8px; padding:9px 12px; margin-bottom:10px; font-size:12.5px; display:none; }
   .alert.show { display:block; }
   .alert a { color:#ffd7d2; cursor:pointer; text-decoration:underline; }
+  .guided-focus { border-color:#3976b8; box-shadow:0 0 0 1px rgba(88,166,255,.12); margin-bottom:14px; }
+  .guided-focus h2 { color:#8dc8ff; }
+  .guided-focus .field { display:grid; grid-template-columns:90px minmax(0,1fr); gap:10px; align-items:center; }
+  .guided-focus .field label { margin:0; }
+  @media (max-width:900px) { .wrap { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -88,18 +93,6 @@
     </div>
     <div class="panel" style="margin-top:14px;"><h2>Read actions</h2><div id="actions"></div></div>
     <div class="panel" style="margin-top:14px;">
-      <h2>Guided configuration <button class="ghost" style="float:right;font-size:11px;padding:2px 8px" onclick="loadPorts()">↻ reload</button></h2>
-      <div class="field"><label>Port</label><select id="gPort" style="width:100%" onchange="loadSettings()"><option>— connect &amp; reload —</option></select></div>
-      <div class="field"><label>Setting</label><select id="gSetting" style="width:100%" onchange="loadValues()"><option>— pick a port first —</option></select></div>
-      <div class="field"><label>Value</label>
-        <select id="gValue" style="width:100%"></select>
-        <input id="gValueText" style="width:100%;display:none" placeholder="enter value" />
-        <small class="hint" id="gValueHint"></small>
-      </div>
-      <div class="row"><button onclick="applyGuided(false)">Apply</button><button onclick="applyGuided(true)" style="background:#238636">Apply &amp; Save</button></div>
-      <small class="hint">Options pulled <b>live from the device</b> (works on any MRV — 8/48 port).</small>
-    </div>
-    <div class="panel" style="margin-top:14px;">
       <h2>Configuration (manual)</h2>
       <div class="row"><input id="cfgContext" placeholder="context (optional), e.g. port async 1" style="width:100%" /></div>
       <div class="row"><textarea id="cfg" rows="4" style="width:100%;font-family:ui-monospace,monospace;font-size:12.5px" placeholder="in-context commands, one per line, e.g.&#10;speed 115200&#10;name Router1"></textarea></div>
@@ -113,14 +106,26 @@
       <div id="pollStatus" class="poll"></div>
     </div>
   </div>
-  <div>
+  <main>
+    <div class="panel guided-focus">
+      <h2>Guided configuration <button class="ghost" style="float:right;font-size:11px;padding:2px 8px" onclick="loadPorts()">↻ reload</button></h2>
+      <div class="field"><label>Port</label><select id="gPort" style="width:100%" onchange="loadSettings()"><option>— connect &amp; reload —</option></select></div>
+      <div class="field"><label>Setting</label><select id="gSetting" style="width:100%" onchange="loadValues()"><option>— pick a port first —</option></select></div>
+      <div class="field"><label>Value</label>
+        <select id="gValue" style="width:100%"></select>
+        <input id="gValueText" style="width:100%;display:none" placeholder="enter value" />
+        <small class="hint" id="gValueHint"></small>
+      </div>
+      <div class="row"><button onclick="applyGuided(false)">Apply</button><button onclick="applyGuided(true)" style="background:#238636">Apply &amp; Save</button></div>
+      <small class="hint">Options pulled <b>live from the device</b> (works on any MRV — 8/48 port).</small>
+    </div>
     <div class="panel"><h2>Output</h2><div class="alert" id="alert"></div><pre id="out">—</pre></div>
     <div class="panel" style="margin-top:14px;">
       <h2>Live SSH activity <button class="ghost" style="float:right;font-size:11px;padding:2px 8px" onclick="clearLog()">clear</button></h2>
       <pre id="log" style="max-height:180px;font-size:11.5px">—</pre>
     </div>
-    <div class="panel" style="margin-top:14px;"><h2>Raw terminal (xterm.js)</h2><div id="term"></div><small class="hint">Replaces the old J2SSH TelnetInternalFrame.</small></div>
-  </div>
+    <div class="panel" style="margin-top:14px;"><h2>Raw terminal (xterm.js)</h2><div id="term"></div><small class="hint">Browser → WebSocket → LXC backend → SSH connection to the MRV.</small></div>
+  </main>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
