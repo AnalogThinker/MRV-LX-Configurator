@@ -1,153 +1,352 @@
-# LX Console (modern) — replacement for the MRV LX-4048T Java applet
+# MRV LX Configurator
 
-A self-contained web app that replaces the deprecated Java 1.5 applet
-(`console.jnlp` + `asp.jar` + `j2ssh.jar`) for managing **MRV / Notus LX Series**
-console servers (built/tested against an LX-4048T-101AC).
+A modern, self-hosted web interface for managing **MRV / Notus LX Series console servers**, developed and tested against an **LX-4048T-101AC** running firmware 5.3.7.
 
-It drives the LX **CLI over standard SSH** and puts a modern web UI on top:
-read dashboards with parsed tables, guided + manual configuration writes,
-a live SSH activity log, an xterm.js terminal, and multi-device support.
+The project replaces the deprecated Java 1.5 configuration applet with a browser-based interface backed by the MRV CLI over standard SSH.
 
----
-## ⭐ Fastest install — one-shot script
+> **Project status:** Active development with successful real-device testing.
 
-# A) From the cloned/copied folder** (has `app/` + `requirements.txt`):
-```bash
-git clone https://github.com/AnalogThinker/MRV-LX-Configurator.git
-cd MRV-LX-Configurator && sudo bash install.sh
+## Why this project exists
+
+Older MRV LX devices shipped with a Java applet that depended on obsolete browser plugins, Java 1.5-era components, J2SSH, and a proprietary GUI protocol. Modern browsers can no longer run that interface.
+
+MRV LX Configurator provides a modern replacement using:
+
+- FastAPI
+- AsyncSSH
+- HTML, CSS, and JavaScript
+- xterm.js
+- Server-Sent Events
+- The supported MRV CLI over SSH port 22
+
+The proprietary GUI-server protocol on TCP port 5040 is not used.
+
+## Current features
+
+### Device connection
+
+- Connect to any reachable MRV LX device by IP address or hostname.
+- Editable SSH port, username, password, and enable password.
+- Defaults for the commonly used MRV credentials can be supplied through environment variables.
+- Displays device information such as firmware, uptime, temperature, connection target, and hostname when available.
+- Supports multiple browser/device sessions through per-connection session tokens.
+
+### Guided port configuration
+
+- Select an asynchronous port from the live port summary.
+- Browse settings organized into functional categories:
+  - Serial port
+  - Access and connection
+  - Attached device
+  - Miscellaneous and advanced
+- Recursively discovers command paths from the device using context-sensitive `?` help.
+- Supports commands with variable depth, for example:
+
+```text
+tcp
+  destination
+    <address>
 ```
 
-# B) straight from a git repo:
-```bash
-sudo REPO=https://github.com/you/lxconsole.git bash install.sh
+- Detects `<cr>` to determine when a command path is complete.
+- Supports:
+  - keyword dropdowns
+  - finite enumerated values
+  - free-text placeholders
+  - wrapped help descriptions
+- Shows the generated in-context CLI command before applying it.
+- Detects and reports MRV CLI errors such as `Syntax Error`, `Invalid input`, and incomplete commands.
+
+### Configuration persistence
+
+The interface distinguishes between the MRV running configuration and flash configuration:
+
+- **Apply to running config** applies the selected change to the active configuration. The change is lost after a reboot unless the running configuration is later saved to flash.
+- **Apply and persist to flash** applies the selected change and then saves the complete running configuration to flash.
+- **Persist all running changes to flash** runs `save configuration flash` and saves every currently active unsaved change on the device.
+
+### Read-only device information
+
+Read actions are grouped into collapsible categories:
+
+- System
+- Network
+- Ports
+- Sessions and users
+- Services
+- Advanced
+
+Port-specific read views support commands such as:
+
+```text
+show port async 1 characteristics
+show port async 1 status
+show port async 1 tcp
+show port async 1 users
 ```
 
-`install.sh` installs Python + deps, creates a venv, writes a **systemd
-service**, starts it, and prints the URL. Optional overrides:
+### Live SSH activity
 
-```bash
-sudo DEST=/opt/lxconsole PORT=8080 SERVICE=lxconsole \
-     LX_USER=InReach LX_PASSWORD=access LX_ENABLE_PASSWORD=system \
-     bash install.sh
+- Displays commands sent to the MRV and output received from the MRV.
+- Shows connection, busy, idle, and error states.
+- Handles MRV paged output automatically.
+- Normalizes terminal line endings for readable multiline output.
+- Buffers character-by-character SSH output into readable blocks.
+- Removes ANSI screen-control sequences and terminal bell characters from the activity display.
+- Retains an extended event history for troubleshooting.
+
+### Raw terminal
+
+An xterm.js terminal is available as an advanced/manual escape hatch. The terminal uses a separate SSH connection from the application control channel.
+
+## SSH architecture
+
+The MRV LX firmware has an unusual SSH limitation: only the first interactive process channel on an SSH transport receives a complete, functional CLI session.
+
+The application therefore uses the following architecture:
+
+```text
+Browser session
+├── Persistent control SSH transport
+│   └── One persistent CLI process channel
+│       ├── Read commands
+│       ├── Configuration writes
+│       └── Save-to-flash operations
+│
+├── Disposable introspection SSH sessions
+│   └── Context-sensitive "?" help discovery
+│
+└── Separate raw-terminal SSH connection
+    └── xterm.js interactive terminal
 ```
 
-Manage it afterwards:
-```bash
-systemctl status lxconsole
-journalctl -u lxconsole -f
-```
+Normal reads and writes are serialized through the persistent CLI channel. This avoids the delay of reconnecting for every command while remaining compatible with the MRV firmware.
 
----
+Introspection uses disposable SSH sessions because the MRV leaves the partially typed help command in its line-editing buffer after `?`, and the tested firmware does not reliably clear that buffer with `Ctrl+U`.
 
-## Features
+## Confirmed MRV behavior
 
-- **Multi-device**: connect to any LX from a login screen (host/port/creds all
-  editable, pre-filled with `InReach` / `access` / enable `system`). Device
-  banner shows hostname, IP/model, firmware, uptime, temp. Disconnect button.
-- **Read actions** with structured **table parsers** (system status/power, port
-  summary, single-port detail).
-- **Guided configuration** (introspection-driven): port → setting → value
-  dropdowns pulled **live from the device**, so it adapts to 8- or 48-port units.
-- **Manual configuration**: free-text hierarchical config.
-- **Save to flash**: persists changes across reboot / power cycle.
-- **Error detection**: scans device output for `Syntax Error` (and similar) and
-  raises a red alert pointing to the verbose activity log.
-- **Live SSH activity**: busy/idle/error dot + real-time `» sent / « received`
-  wire log (Server-Sent Events).
-- **Raw terminal**: xterm.js shell over WebSocket.
+The following behavior has been confirmed against the real LX-4048T-101AC:
 
-## Confirmed device facts (baked into the code)
-
-| Item | Value |
+| Item | Confirmed behavior |
 |---|---|
-| SSH host-key algos offered | `ssh-rsa`, `ssh-dss` only (legacy re-enabled) |
-| Login | `InReach` / `access` → CLI (`InReach:0 >`) |
-| Superuser | `enable` + `system` → `InReach:0 >>` |
-| Config model | hierarchical: `configuration` → `port async N` (`Async1:0 >>`) → cmds → `end` |
-| `set` alone | launches setup wizard (refused remotely) — NOT used |
-| Persist | `save configuration flash` |
+| SSH host keys | Device offers legacy `ssh-rsa` and `ssh-dss` host keys |
+| Login | `InReach` / `access` enters the normal MRV CLI |
+| User prompt | `InReach:0 >` |
+| Superuser | `enable`, followed by the enable password |
+| Superuser prompt | `InReach:0 >>` |
+| Configuration mode | `configuration` produces `Config:0 >>` |
+| Async-port context | `port async 1` produces `Async1:0 >>` |
+| Exit to superuser | `end` |
+| Save to flash | `save configuration flash` |
+| Pager text | `Type a key to continue, q to quit` |
+| System IP command | `show system ip status` |
+| Port summary | `show port async summary` |
 
----
+Example configuration transaction:
 
-# Deploying on Proxmox (LXC)
-
-## Prerequisites
-- Proxmox VE 8.x with a Debian 12 LXC template:
-  ```bash
-  pveam update && pveam download local debian-12-standard_12.7-1_amd64.tar.zst
-  ```
-- The LX device reachable from the container's network (test `ping <lx-ip>`).
-
-## Path A — turnkey Debian LXC via Proxmox VE Helper-Scripts
-The community project gives you a clean Debian LXC fast; then run `install.sh`.
-
-1. On the **Proxmox host shell**, create a Debian 12 LXC. Get the current
-   command from the official site (URLs change over time):
-   **https://community-scripts.github.io/ProxmoxVE/** → find **Debian** → copy
-   its one-liner. (⚠️ review any community script before running it.)
-2. `pct enter <CTID>`
-3. Copy the project in (scp/git) and run `sudo bash install.sh`.
-
-## Path B — manual LXC
-On the **Proxmox host shell**:
-```bash
-pct create 950 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
-  --hostname lxconsole --cores 1 --memory 512 --swap 256 \
-  --net0 name=eth0,bridge=vmbr0,ip=dhcp \
-  --unprivileged 1 --features nesting=1 --onboot 1
-pct start 950 && pct enter 950
+```text
+enable
+configuration
+port async 1
+speed 4800
+end
+save configuration flash
 ```
-Then inside: copy the project in and `sudo bash install.sh`.
-(For a static IP: `--net0 name=eth0,bridge=vmbr0,ip=192.168.0.20/24,gw=192.168.0.1`.)
-
-## Manual run (no service)
-```bash
-python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-LX_HOST=192.168.0.50 uvicorn app.main:app --host 0.0.0.0 --port 8080
-```
-
-## Environment variables (all optional — just form defaults)
-| Var | Default | Meaning |
-|---|---|---|
-| `LX_HOST` | *(empty)* | pre-fill host/IP |
-| `LX_PORT` | `22` | pre-fill SSH port |
-| `LX_USER` | `InReach` | pre-fill username |
-| `LX_PASSWORD` | `access` | pre-fill password |
-| `LX_ENABLE_PASSWORD` | `system` | pre-fill enable password |
-
-## Troubleshooting
-- **Can't reach LX**: `ping <lx-ip>` and `nc -vz <lx-ip> 22` from the container.
-- **SSH handshake fails**: legacy `ssh-rsa`/`ssh-dss` already re-enabled; if your
-  firmware differs, adjust the `LEGACY_*` lists in `app/ssh.py`.
-- **Commands hang**: prompt regex expects an `InReach`-style prompt; override via
-  `prompt_re` if your device's label differs.
-- **"Syntax Error" alert**: a bad command was detected — open the Live SSH
-  activity log to see exactly what was sent/received.
-- **Logs**: `journalctl -u lxconsole -f`.
-
-## Security notes
-- Unauthenticated by design for trusted LAN/homelab use — put behind a reverse
-  proxy with auth or a VPN if exposed.
-- Host keys not pinned (`known_hosts=None`); add pinning if desired.
-- Passwords are never written to the activity log.
-
----
 
 ## Project layout
-```
-lxconsole/
+
+```text
+MRV-LX-Configurator/
 ├── app/
 │   ├── __init__.py
-│   ├── ssh.py         # SSH transport, enable, config writes, introspection, error scan
-│   ├── sessions.py    # multi-device session manager
-│   ├── events.py      # SSE activity bus
-│   ├── parsers.py     # CLI text -> tables + cli_help
-│   ├── commands.yaml  # action registry
-│   ├── main.py        # FastAPI app
-│   └── static/index.html
-├── install.sh         # one-shot installer (systemd)
+│   ├── commands.yaml
+│   ├── events.py
+│   ├── main.py
+│   ├── parsers.py
+│   ├── sessions.py
+│   ├── ssh.py
+│   └── static/
+│       └── index.html
+├── install.sh
 ├── requirements.txt
-├── .gitignore
 └── README.md
 ```
+
+## Installation on Debian or Ubuntu
+
+### Clone and install
+
+Run as root or with `sudo` inside the target VM, server, or LXC:
+
+```bash
+git clone https://github.com/AnalogThinker/MRV-LX-Configurator.git
+cd MRV-LX-Configurator
+sudo bash install.sh
+```
+
+The installer:
+
+1. installs Python, pip, venv, and required packages;
+2. installs the application under `/opt/lxconsole` by default;
+3. creates a Python virtual environment;
+4. installs `requirements.txt`;
+5. creates and enables the `lxconsole` systemd service;
+6. starts the application on port 8080.
+
+Open:
+
+```text
+http://<server-or-lxc-ip>:8080
+```
+
+### Install directly from the Git repository
+
+If `install.sh` is already available locally:
+
+```bash
+sudo REPO=https://github.com/AnalogThinker/MRV-LX-Configurator.git bash install.sh
+```
+
+### Optional installer overrides
+
+```bash
+sudo \
+  DEST=/opt/lxconsole \
+  PORT=8080 \
+  SERVICE=lxconsole \
+  LX_HOST=192.168.0.50 \
+  LX_USER=InReach \
+  LX_PASSWORD=access \
+  LX_ENABLE_PASSWORD=system \
+  bash install.sh
+```
+
+## Updating an existing Git-managed installation
+
+```bash
+cd /opt/lxconsole
+git pull --ff-only origin main
+.venv/bin/pip install -r requirements.txt
+systemctl restart lxconsole
+systemctl status lxconsole --no-pager
+```
+
+After updating, force-refresh the browser to bypass cached HTML and JavaScript:
+
+```text
+Ctrl+F5
+```
+
+## Manual development run
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8080
+```
+
+## Environment variables
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `LX_HOST` | empty | Pre-fills the target MRV address |
+| `LX_PORT` | `22` | Pre-fills the SSH port |
+| `LX_USER` | `InReach` | Pre-fills the MRV username |
+| `LX_PASSWORD` | `access` | Pre-fills the login password |
+| `LX_ENABLE_PASSWORD` | `system` | Pre-fills the enable password |
+
+These values are form defaults only. Users can change them in the connection dialog.
+
+## Service management
+
+```bash
+systemctl status lxconsole
+systemctl restart lxconsole
+systemctl stop lxconsole
+journalctl -u lxconsole -f -o cat
+```
+
+## Troubleshooting
+
+### Confirm network reachability
+
+From the application host:
+
+```bash
+ping <mrv-ip>
+nc -vz <mrv-ip> 22
+```
+
+### Validate Python source
+
+```bash
+cd /opt/lxconsole
+.venv/bin/python -m py_compile \
+  app/ssh.py \
+  app/main.py \
+  app/parsers.py \
+  app/sessions.py \
+  app/events.py
+```
+
+No output means the files passed syntax validation.
+
+### Validate the YAML command registry
+
+```bash
+cd /opt/lxconsole
+.venv/bin/python -c "import yaml; yaml.safe_load(open('app/commands.yaml')); print('YAML OK')"
+```
+
+### Commands return syntax errors
+
+Review the Live SSH Activity panel. MRV commands can require additional command levels. For example:
+
+```text
+show port async 1
+```
+
+is incomplete on the tested firmware, while the following is valid:
+
+```text
+show port async 1 characteristics
+```
+
+### Browser still shows the old interface
+
+Use:
+
+```text
+Ctrl+F5
+```
+
+or clear the browser cache for the configurator address.
+
+## Security notes
+
+- The application is intended for trusted management networks.
+- The current web interface does not provide built-in user authentication.
+- Do not expose the application directly to the public internet.
+- Use a VPN, authenticated reverse proxy, or other approved access control if remote access is required.
+- SSH host-key verification is currently disabled with `known_hosts=None` for compatibility and ease of deployment.
+- The application intentionally enables legacy SSH algorithms required by the MRV hardware.
+- Passwords and enable passwords should never be written to application logs.
+
+## Planned improvements
+
+- Classic form-based port configuration inspired by the original Java interface.
+- Preloaded current port values with dirty-field tracking.
+- Apply only changed fields, then reload and verify returned values.
+- Feature tabs for Console, TCP/Telnet/SSH, Authentication, Data Buffer, Modem/APD, RS-485, Signal/Alarms, Attached Devices, and Advanced.
+- Firmware-aware caching of introspection results.
+- Improved structured parsers for additional read-only views.
+- Optional saved-device profiles.
+- SSH host-key pinning.
+- Authentication or reverse-proxy deployment guidance.
+- Portable Windows packaging for technician use.
+
+## Disclaimer
+
+This is an independent community project and is not affiliated with or supported by MRV Communications, Oracle, or the original Java application authors. Test configuration changes carefully before using the tool on production equipment.
