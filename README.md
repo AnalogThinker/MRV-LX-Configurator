@@ -134,15 +134,6 @@ LX_HOST=192.168.0.50 uvicorn app.main:app --host 0.0.0.0 --port 8080
 
 ---
 
-## 🔁 Working across sessions (avoid losing work)
-
-If you're iterating with an assistant whose workspace resets:
-- **The delivered `lxconsole.zip` is your durable copy** — download it each time.
-- **When you return after a reset, re-upload the latest zip** so work resumes
-  instantly instead of being rebuilt.
-- **Best**: push this folder to a **git repo** once; then `install.sh` can pull
-  it (`REPO=...`) and you never depend on a temporary workspace.
-
 ## Project layout
 ```
 lxconsole/
