@@ -378,16 +378,6 @@ show port async 1 characteristics
 
 Use the Advanced command explorer or Raw Terminal to inspect the live command tree when validating a new field mapping.
 
-### Browser still shows the old interface
-
-Use:
-
-```text
-Ctrl+F5
-```
-
-or clear the browser cache for the configurator address.
-
 ## Security notes
 
 - The application is intended for trusted management networks.
@@ -412,3 +402,8 @@ or clear the browser cache for the configurator address.
 ## Disclaimer
 
 This is an independent community project and is not affiliated with or supported by MRV Communications, Oracle, or the original Java application authors. Test configuration changes carefully before using the tool on production equipment.
+
+## Personal note
+
+This has been a weekend project, for entertainment purpose only. It likely still has a lot of bugs and issues. It also probably not even a good idea but I wanted to have some fun. It has also been partially Vibe Coding.
+But if this is something that has ANY potential value for you and want to branch it, PLEASE DO SO!
